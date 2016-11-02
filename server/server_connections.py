@@ -52,3 +52,9 @@ class ConnectionsList(object):
             lambda x: x.file_descriptor,
             filter(lambda x: x.needs_write(), self.connections)
         )
+
+    def empty(self):
+        return not self.connections
+
+    def pop(self):
+        return self.connections.pop()

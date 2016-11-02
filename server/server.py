@@ -11,6 +11,17 @@ class Server(object):
     DEFAULT_PORT = '8888'
     DEFAULT_HOST = 'localhost'
 
+    def __init__(self):
+        options, args = self.parse_opts()
+        server_address = (options.host, options.port)
+
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(server_address)
+        self.sock.listen(10)  # Backlog of 10
+
+        self.running = True
+        self.connections_list = ConnectionsList()
+
     def parse_opts(self):
         """
         Parse command line arguments
@@ -23,33 +34,31 @@ class Server(object):
                           help='host address to bind to', type='string', default=self.DEFAULT_HOST)
         return parser.parse_args()
 
+    def stop(self):
+        self.running = False
+        while not self.connections_list.empty():
+            conn = self.connections_list.pop()
+            conn.file_descriptor.shutdown(socket.SHUT_RDWR)
+            conn.file_descriptor.close()
+        self.sock.close()
+
     def run(self):
-        options, args = self.parse_opts()
-        server_address = (options.host, options.port)
-
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(server_address)
-
-        sock.listen(10)  # Backlog of 10
-
-        connections_list = ConnectionsList()
-
-        while True:
-            print(connections_list)
-            read_list = [sock]
-            read_list += connections_list.get_read_set()
-            write_list = connections_list.get_write_set()
+        while self.running:
+            print(self.connections_list)
+            read_list = [self.sock]
+            read_list += self.connections_list.get_read_set()
+            write_list = self.connections_list.get_write_set()
 
             readable, writeable, _ = select.select(read_list, write_list, [])
 
             for s in readable:
-                if s == sock:
-                    connection, client_address = sock.accept()
+                if s == self.sock:
+                    connection, client_address = self.sock.accept()
                     connection.setblocking(0)
 
-                    connections_list.add(WorkerConnection(connection, client_address))
+                    self.connections_list.add(WorkerConnection(connection, client_address))
                 else:
-                    conn = connections_list.get_by_socket(s)
+                    conn = self.connections_list.get_by_socket(s)
                     try:
                         message = conn.receive()
                         if message:
@@ -58,10 +67,10 @@ class Server(object):
                                 w_message = to_write.pop()
                                 conn.send_message(w_message)
                     except (ClientDisconnectedException, ConnectionResetError) as e:
-                        connections_list.remove(s)
+                        self.connections_list.remove(s)
 
             for s in writeable:
-                conn = connections_list.get_by_socket(s)
+                conn = self.connections_list.get_by_socket(s)
                 if conn and conn.needs_write():
                     try:
                         conn.write()
