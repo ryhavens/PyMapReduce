@@ -1,6 +1,7 @@
 import struct
 
-HEADER_SIZE = struct.calcsize('!Bi')
+HEADER_FORMAT = '!Bi'
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
 
 class ClientDisconnectedException(Exception):
@@ -8,22 +9,36 @@ class ClientDisconnectedException(Exception):
 
 
 class Message(object):
-    def __init__(self, m_type, body):
+    def __init__(self, m_type, body=None):
         self.m_type = m_type
         self.body = body
 
+    def __str__(self):
+        return '<Message: type={m_type} body="{body}">'.format(m_type=self.m_type, body=self.body)
 
-class Worker(object):
+    def has_body(self):
+        return self.body
+
+    def get_header_for_send(self):
+        return struct.pack(HEADER_FORMAT, self.m_type, len(self.body))
+
+    def get_body_for_send(self):
+        return struct.pack(str(len(self.body)) + 's', bytes(self.body, encoding='utf-8'))
+
+
+class PMRConnection(object):
     """
     Represents a connected client
     """
-    def __init__(self, file_descriptor, address):
+    def __init__(self, file_descriptor, address=None):
         self.file_descriptor = file_descriptor
         self.address = address
 
         self.data_bytes_remaining = 0
         self.header_buffer = []
         self.receive_buffer = []
+
+        self.write_buffer = []
 
     def clear_buffers(self):
         self.data_bytes_remaining = 0
@@ -64,35 +79,25 @@ class Worker(object):
         else:
             return False
 
+    def needs_write(self):
+        """
+        Does this worker need something written?
+        :return: bool
+        """
+        return bool(self.write_buffer)
 
-class Workers(object):
-    """
-    The set of available workers
-    """
-    def __init__(self):
-        self.workers = []
+    def send_message(self, message):
+        self._write_to_buffer(message.get_header_for_send())
+        if message.has_body():
+            self._write_to_buffer(message.get_body_for_send())
 
-    def add(self, worker):
-        # TODO: check to make sure the worker doesn't already exist
-        self.workers.append(worker)
+    def _write_to_buffer(self, buffer):
+        """
+        Write to worker's buffer to be sent at next opportunity
+        :param buffer:
+        :return:
+        """
+        self.write_buffer += buffer
 
-    def get_by_id(self, worker_id):
-        for worker in self.workers:
-            if worker.worker_id == worker_id:
-                return worker
-        return None
-
-    def get_by_socket(self, sock):
-        for worker in self.workers:
-            if worker.file_descriptor == sock:
-                return worker
-        return None
-
-    def remove(self, file_descriptor):
-        for index, worker in enumerate(self.workers):
-            if worker.file_descriptor == file_descriptor:
-                del self.workers[index]
-
-    def get_read_set(self):
-        # TODO: Add any filtering necessary
-        return map((lambda x: x.file_descriptor), self.workers)
+    def write(self):
+        self.file_descriptor.sendall(bytes(self.write_buffer))
