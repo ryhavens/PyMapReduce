@@ -1,29 +1,10 @@
 import struct
 
-HEADER_FORMAT = '!Bi'
-HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+from messages import HEADER_SIZE, Message
 
 
 class ClientDisconnectedException(Exception):
     pass
-
-
-class Message(object):
-    def __init__(self, m_type, body=None):
-        self.m_type = m_type
-        self.body = body
-
-    def __str__(self):
-        return '<Message: type={m_type} body="{body}">'.format(m_type=self.m_type, body=self.body)
-
-    def has_body(self):
-        return self.body
-
-    def get_header_for_send(self):
-        return struct.pack(HEADER_FORMAT, self.m_type, len(self.body))
-
-    def get_body_for_send(self):
-        return struct.pack(str(len(self.body)) + 's', bytes(self.body, encoding='utf-8'))
 
 
 class PMRConnection(object):
@@ -81,7 +62,7 @@ class PMRConnection(object):
 
     def needs_write(self):
         """
-        Does this worker need something written?
+        Does this connection need something written?
         :return: bool
         """
         return bool(self.write_buffer)
@@ -93,7 +74,7 @@ class PMRConnection(object):
 
     def _write_to_buffer(self, buffer):
         """
-        Write to worker's buffer to be sent at next opportunity
+        Write to connection's buffer to be sent at next opportunity
         :param buffer:
         :return:
         """
@@ -101,3 +82,4 @@ class PMRConnection(object):
 
     def write(self):
         self.file_descriptor.sendall(bytes(self.write_buffer))
+        self.write_buffer = []

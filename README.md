@@ -11,3 +11,9 @@ Message format
 * 4 bytes data length
 
 * data
+
+Message types:
+
+* 1: Subscribe data=UUID
+
+* 2: Subscribe Ack

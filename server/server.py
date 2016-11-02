@@ -1,10 +1,10 @@
-import struct
 import socket
 import select
 from optparse import OptionParser
 
-from connection import PMRConnection, Message, ClientDisconnectedException
-from .workers import Workers
+from connection import ClientDisconnectedException
+from .server_connections import WorkerConnection, ConnectionsList
+from .message_handlers import handle_message
 
 
 class Server(object):
@@ -32,12 +32,13 @@ class Server(object):
 
         sock.listen(10)  # Backlog of 10
 
-        workers = Workers()
+        connections_list = ConnectionsList()
 
         while True:
+            print(connections_list)
             read_list = [sock]
-            read_list += workers.get_read_set()
-            write_list = workers.get_write_set()
+            read_list += connections_list.get_read_set()
+            write_list = connections_list.get_write_set()
 
             readable, writeable, _ = select.select(read_list, write_list, [])
 
@@ -46,21 +47,24 @@ class Server(object):
                     connection, client_address = sock.accept()
                     connection.setblocking(0)
 
-                    workers.add(PMRConnection(connection, client_address))
+                    connections_list.add(WorkerConnection(connection, client_address))
                 else:
-                    worker = workers.get_by_socket(s)
+                    conn = connections_list.get_by_socket(s)
                     try:
-                        message = worker.receive()
+                        message = conn.receive()
                         if message:
-                            worker.send_message(Message(2, 'this is an ack'))
+                            to_write = handle_message(message, conn)
+                            while to_write:
+                                w_message = to_write.pop()
+                                conn.send_message(w_message)
                     except (ClientDisconnectedException, ConnectionResetError) as e:
-                        workers.remove(s)
+                        connections_list.remove(s)
 
             for s in writeable:
-                worker = workers.get_by_socket(s)
-                if worker and worker.needs_write():
+                conn = connections_list.get_by_socket(s)
+                if conn and conn.needs_write():
                     try:
-                        worker.write()
+                        conn.write()
                     except Exception as e:
                         # TODO: What exceptions can happen here? Should we resend?
                         print(e)
