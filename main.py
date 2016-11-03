@@ -2,9 +2,9 @@ from pmr_util.mapper import Mapper
 from pmr_util.reducer import Reducer
 import os
 
-
+brown = open('brown.txt','r')
 f1 = open('f1.txt', 'w')
-mapper = Mapper(outstream=f1)
+mapper = Mapper(instream=brown, outstream=f1)
 mapper.Map()
 f1.close()
 
