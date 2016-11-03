@@ -42,6 +42,15 @@ class Server(object):
             conn.file_descriptor.close()
         self.sock.close()
 
+    def do_processing(self):
+        """
+        Do any necessary processing that isn't linked to one
+        particular client
+        Runs on every server loop
+        :return:
+        """
+        pass
+
     def run(self):
         while self.running:
             print(self.connections_list)

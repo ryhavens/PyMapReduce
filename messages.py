@@ -3,8 +3,10 @@ import struct
 HEADER_FORMAT = '!Bi'
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
-SUBSCRIBE_MESSAGE = 1
-SUBSCRIBE_ACK_MESSAGE = 2
+SUBSCRIBE_MESSAGE = 1  # Sent by client to subscribe
+SUBSCRIBE_ACK_MESSAGE = 2  # Sent by server to ack subscribe
+JOB_READY_FOR_REQUEST = 3  # Sent by server to tell client a job is ready
+JOB_REQUEST = 4  # Sent by client to request job
 
 
 class Message(object):

@@ -11,3 +11,8 @@ def handle_message(message, connection):
     if message.is_type(SUBSCRIBE_MESSAGE):
         connection.subscribe()
         return [SubscribeAckMessage()]
+
+    if message.is_type(JOB_REQUEST):
+        # Send the job files here
+        print('Job was requested.. Implement me')
+        return []
