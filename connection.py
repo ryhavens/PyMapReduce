@@ -1,6 +1,6 @@
 import struct
 
-from messages import HEADER_SIZE, Message
+from messages import HEADER_SIZE, Message, MessageTypes
 
 
 class ClientDisconnectedException(Exception):
@@ -54,7 +54,7 @@ class PMRConnection(object):
 
         if len(self.header_buffer) == HEADER_SIZE and self.data_bytes_remaining == 0:
             m_type, _ = struct.unpack('>Bi', bytes(self.header_buffer))
-            message = Message(m_type, bytes(self.receive_buffer))
+            message = Message(MessageTypes(m_type), bytes(self.receive_buffer))
             self.clear_buffers()
             return message
         else:

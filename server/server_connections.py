@@ -4,6 +4,7 @@ from connection import PMRConnection
 class WorkerConnection(PMRConnection):
     def __init__(self, file_descriptor, address=None):
         self.subscribed = False
+        self.prev_message = None
         super().__init__(file_descriptor, address)
 
     def __str__(self):

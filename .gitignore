@@ -90,3 +90,9 @@ ENV/
 
 # JetBrains
 .idea/
+
+# Our files
+client_map_out
+client_map_out_sorted
+client_reduce_out
+partition*

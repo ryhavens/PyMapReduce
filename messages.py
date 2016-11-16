@@ -69,20 +69,40 @@ class Message(object):
         return self.body
 
     def get_header_for_send(self):
-        return struct.pack(HEADER_FORMAT, self.m_type, len(self.body) if self.body else 0)
+        return struct.pack(HEADER_FORMAT, self.m_type.value, len(self.body) if self.body else 0)
 
     def get_body_for_send(self):
         return struct.pack(str(len(self.body)) + 's', bytes(self.body, encoding='utf-8'))
 
     def is_type(self, m_type):
-        return m_type == self.m_type
+        return m_type is self.m_type
 
 
 class SubscribeMessage(Message):
     def __init__(self):
-        super().__init__(MessageTypes.SUBSCRIBE_MESSAGE.value)
+        super().__init__(MessageTypes.SUBSCRIBE_MESSAGE)
 
 
 class SubscribeAckMessage(Message):
     def __init__(self):
-        super().__init__(MessageTypes.SUBSCRIBE_ACK_MESSAGE.value)
+        super().__init__(MessageTypes.SUBSCRIBE_ACK_MESSAGE)
+
+
+class JobReadyToReceiveMessage(Message):
+    def __init__(self):
+        super().__init__(MessageTypes.JOB_READY_TO_RECEIVE)
+
+
+class DataFileMessage(Message):
+    def __init__(self, body):
+        super().__init__(MessageTypes.DATAFILE, body=body)
+
+
+class JobMappingDone(Message):
+    def __init__(self):
+        super().__init__(MessageTypes.JOB_MAPPING_DONE)
+
+
+class JobReducingDone(Message):
+    def __init__(self):
+        super().__init__(MessageTypes.JOB_REDUCING_DONE)
