@@ -1,8 +1,11 @@
 import socket
 import select
+import collections
 from optparse import OptionParser
 
+from PMRJob.job import Job
 from connection import ClientDisconnectedException
+from messages import MessageTypes
 from .server_connections import WorkerConnection, ConnectionsList
 from .message_handlers import handle_message
 
@@ -21,6 +24,18 @@ class Server(object):
 
         self.running = True
         self.connections_list = ConnectionsList()
+
+        self.jobs_queue = collections.deque()
+        self.jobs_queue.append('f1.txt')
+
+        """
+        How should system state work?
+
+        A map of client ids to lists of jobs
+
+        For now, client_id will be file descriptor
+        """
+        self.conn_status_map = {}
 
     def parse_opts(self):
         """
@@ -49,10 +64,22 @@ class Server(object):
         Runs on every server loop
         :return:
         """
-        pass
+        # conns = self.connections_list.connections
+        # for conn in conns:
+        #     if conn.file_descriptor not in self.conn_status_map:
+        #         self.conn_status_map[conn.file_descriptor] = []
+
+        # Select conns who want a job
+        conns = [c for c in self.connections_list.connections if c.prev_message is MessageTypes.JOB_READY_TO_RECEIVE]
+
+        while conns and len(self.jobs_queue):
+            job_data = self.jobs_queue.pop()
+            job = Job(JobID=None, mapper=None, reducer=None, instream=open(job_data, 'r'), client_list=conns)
+            job.PartitionJob(conns)
 
     def run(self):
         while self.running:
+            self.do_processing()
             print(self.connections_list)
             read_list = [self.sock]
             read_list += self.connections_list.get_read_set()

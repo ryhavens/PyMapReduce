@@ -1,6 +1,9 @@
 from enum import Enum
 import os
 
+from messages import DataFileMessage
+
+
 class JobPhase(Enum):
 	not_started = 0
 	mapping_ready = 1
@@ -52,11 +55,9 @@ class Job:
 
 	def PartitionJob(self, client_list):
 		partitions = self.SimplePartition()
-		for i in range(self.n_clients):
-			# send files to clients
-			# sending implemented further up the tree
-			# self.client_list[i].SendDatafile(partitions[i])
-			continue 
+		for i, conn in enumerate(self.client_list):
+			with open(partitions[i].name, 'r') as f:
+				conn.send_message(DataFileMessage(f.read()))
 
 
 
@@ -68,11 +69,13 @@ class Job:
 		fp_array = []
 
 		for i in range(0, self.n_clients):
-			fp_array.append(open('partition' + i, 'w'))
+			fp_array.append(open('partition' + str(i), 'w'))
 
-		for i,line in enumerate(self.instream):
-			line = line.strip()
-			fp_array[ord(line[0])%n_clients].write(line + '\n')
+		for i, line in enumerate(self.instream):
+			fp_array[i%self.n_clients].write(line)
+
+		for f in fp_array:
+			f.close()
 
 		self.instream.close()
 		return fp_array
