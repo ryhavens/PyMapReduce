@@ -6,7 +6,8 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 SUBSCRIBE_MESSAGE = 1  # Sent by client to subscribe
 SUBSCRIBE_ACK_MESSAGE = 2  # Sent by server to ack subscribe
 JOB_READY_FOR_REQUEST = 3  # Sent by server to tell client a job is ready
-JOB_REQUEST = 4  # Sent by client to request job
+JOB_READY_TO_RECEIVE = 4  # Sent by client to acknowledge job ready, ready to receive job
+ERROR = 5 # Sent by client to indicate that it is unable to 
 
 
 class Message(object):
