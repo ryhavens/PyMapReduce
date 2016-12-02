@@ -83,7 +83,7 @@ class Message(object):
         return struct.pack(HEADER_FORMAT, self.m_type.value, len(self.body) + len(self.filename))
 
     def get_body_for_send(self):
-        return struct.pack(str(len(self.filename)) + 's' + str(len(self.body)) + 's', bytes(self.filename, encoding='utf-8') + bytes(self.body, encoding='utf-8'))
+        return struct.pack(str(len(self.filename)) + 's' + str(len(self.body)) + 's', bytes(self.filename, encoding='utf-8'), bytes(self.body, encoding='utf-8'))
 
     def is_type(self, m_type):
         return m_type is self.m_type

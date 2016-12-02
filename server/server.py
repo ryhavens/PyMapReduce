@@ -3,7 +3,7 @@ import select
 import collections
 from optparse import OptionParser
 
-from PMRJob.job import Job
+from PMRJob.job import Job, JobPhase
 from connection import ClientDisconnectedException
 from messages import MessageTypes
 from .server_connections import WorkerConnection, ConnectionsList
@@ -64,7 +64,7 @@ class Server(object):
             conn.file_descriptor.close()
         self.sock.close()
 
-    def do_processing(self, mapper_class, reducer_class, datafile):
+    def do_processing(self):
         """
         Do any necessary processing that isn't linked to one
         particular client
@@ -79,18 +79,27 @@ class Server(object):
         # Select conns who want a job
         conns = [c for c in self.connections_list.connections if c.prev_message is MessageTypes.JOB_READY_TO_RECEIVE]
 
-        self.job = Job(JobID=self.GetNextJobID(), mapper=mapper_class, reducer=reducer_class, instream=datafile, client_list=conns)
-        self.job.PartitionJob(conns)
+        if (len(conns)):
+            self.job.SetClientList(conns)
+            if (self.job.phase == JobPhase.not_started):
+                self.job.StartJob()
+
+    def SetJob(self, mapper_class, reducer_class, datafile):
+        conns = [c for c in self.connections_list.connections if c.prev_message is MessageTypes.JOB_READY_TO_RECEIVE]
+        self.job = Job(JobID=self.GetNextJobID(), mapper=mapper_class, reducer=reducer_class, datafile=datafile, client_list=conns)
 
     def InitializeJob(self):
         mapper_class = None
         reducer_class = None
         datafile = None
 
-        print('Please specify the path to where your Mapper is located now:')
+        print('Please specify the Python package path to your Mapper module:')
         while (1):
             mapper_name = sys.stdin.readline()
             mapper_name = mapper_name.strip() # truncate '\n'
+            # defaults
+            if (not mapper_name): 
+                mapper_name = 'PMRProcessing.mapper.mapper'
             try:
                 mapper_pkg = importlib.import_module(mapper_name)
             except ImportError:
@@ -102,10 +111,13 @@ class Server(object):
                 print('Module was loaded, but does not contain a "Mapper" class. Please retry.')
                 continue
             break
-        print('Please specify the path to where your Reducer is located now:')
+        print('Please specify the Python package path to your Reducer module:')
         while (1):
             reducer_name = sys.stdin.readline()
             reducer_name = reducer_name.strip() # truncate '\n'
+            # defaults
+            if (not reducer_name): 
+                reducer_name = 'PMRProcessing.reducer.reducer'
             try:
                 reducer_pkg = importlib.import_module(reducer_name)
             except ImportError:
@@ -117,23 +129,28 @@ class Server(object):
                 print('Module was loaded, but does not contain a "Reducer" class. Please retry.')
                 continue
             break
-        print('Please specify the path to your Data file now:')
+        print('Please specify the relative path to your data file now:')
         while (1):
             datafile_name = sys.stdin.readline()
             datafile_name = datafile_name.strip() # truncate '\n'
+            # defaults
+            if (not datafile_name):
+                datafile_name = 'brown.txt'
             try:
                 datafile = open(datafile_name, 'r')
+                datafile.close()
             except FileNotFoundError:
                 print('Could not load datafile. Please retry.')
                 continue
             break
 
-        self.run(mapper_class, reducer_class, datafile)
+        self.SetJob(mapper_class, reducer_class, datafile_name)
+        self.run()
 
-    def run(self, mapper_class, reducer_class, datafile):
-
+    def run(self):
+        
         while self.running:
-            self.do_processing(mapper_class, reducer_class, datafile)
+            self.do_processing()
             print(self.connections_list)
             read_list = [self.sock]
             read_list += self.connections_list.get_read_set()

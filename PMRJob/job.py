@@ -1,7 +1,7 @@
 from enum import Enum
 import os
 
-from messages import DataFileMessage
+from messages import *
 
 
 class JobPhase(Enum):
@@ -20,21 +20,28 @@ class Job:
 	"""
 	@brief 	Job class. Specifies how a job should be distributed given a mapper, reducer
 	"""
-	def __init__(self, JobID, mapper, reducer, instream, client_list):
+	def __init__(self, JobID, mapper, reducer, datafile, client_list):
 		self.JobID = JobID
 		self.Mapper = mapper
 		self.Reducer = reducer
 		self.phase = JobPhase.not_started
 		self.client_list = client_list
-		self.instream = instream
+		self.datafile = datafile
 		self.n_clients = len(self.client_list)
 
+	# run this before executing job operations like partition job
+	def SetClientList(self, client_list):
+		self.client_list = client_list
+		self.n_clients = len(self.client_list)
+
+
 	def GetPhase(self):
-		return self.phase
+		return self.JobPhase
 
 	def StartJob(self):
+		print("JobPhase " + str(self.phase))
 		self.phase = JobPhase.mapping_ready
-		self.PartitionJob(self.client_list)
+		self.PartitionJob()
 
 	def MappingPhase(self):
 		assert (self.phase == JobPhase.mapping_ready)
@@ -53,11 +60,16 @@ class Job:
 
 
 
-	def PartitionJob(self, client_list):
+	# TODO
+	# Partition job should not send the job to the clients
+	# Leave this to the server
+	# Partition job SHOULD initialize a hashing algorithm to tell the server
+	#	which clients should receive which data
+	def PartitionJob(self):
 		partitions = self.SimplePartition()
 		for i, conn in enumerate(self.client_list):
 			with open(partitions[i].name, 'r') as f:
-				conn.send_message(DataFileMessage(f.read()))
+				conn.send_message(DatafileMessage(self.datafile, f.read()))
 
 
 
@@ -66,18 +78,19 @@ class Job:
 	# Partitions by key according to first letter, super simple
 	# No guarantees that this will create similar sized partitions
 	def SimplePartition(self):
+		instream = open(self.datafile, 'r')
 		fp_array = []
 
 		for i in range(0, self.n_clients):
 			fp_array.append(open('partition' + str(i), 'w'))
 
-		for i, line in enumerate(self.instream):
+		for i, line in enumerate(instream):
 			fp_array[i%self.n_clients].write(line)
 
 		for f in fp_array:
 			f.close()
 
-		self.instream.close()
+		instream.close()
 		return fp_array
 
 
