@@ -31,9 +31,6 @@ class Server(object):
         print('Server running on HOST {}, PORT {}'.format(self.server_address[0], self.server_address[1]))
         self.connections_list = ConnectionsList()
 
-        self.jobs_queue = collections.deque()
-        self.jobs_queue.append('f1.txt')
-
         """
         How should system state work?
 
@@ -42,6 +39,7 @@ class Server(object):
         For now, client_id will be file descriptor
         """
         self.conn_status_map = {}
+        self.job = None
 
     def parse_opts(self):
         """
@@ -81,10 +79,8 @@ class Server(object):
         # Select conns who want a job
         conns = [c for c in self.connections_list.connections if c.prev_message is MessageTypes.JOB_READY_TO_RECEIVE]
 
-        while conns and len(self.jobs_queue):
-            job_data = self.jobs_queue.pop()
-            job = Job(JobID=self.GetNextJobID(), mapper=mapper_class, reducer=reducer_class, instream=datafile, client_list=conns)
-            job.PartitionJob(conns)
+        self.job = Job(JobID=self.GetNextJobID(), mapper=mapper_class, reducer=reducer_class, instream=datafile, client_list=conns)
+        self.job.PartitionJob(conns)
 
     def InitializeJob(self):
         mapper_class = None
@@ -156,6 +152,7 @@ class Server(object):
                     try:
                         message = conn.receive()
                         if message:
+                            # I have an issue with how generic this is
                             to_write = handle_message(message, conn)
                             while to_write:
                                 w_message = to_write.pop()

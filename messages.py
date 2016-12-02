@@ -28,9 +28,9 @@ class MessageTypes(Enum):
     JOB_READY_TO_RECEIVE = 5  # Sent by client to acknowledge job ready, ready to receive job
     # [JOB_READY_TO_RECEIVE][ClientID][JobID], ACKs job ID
     DATAFILE = 6 # Sent by server to client to give it the data for the current job
-    # [DATAFILE][ClientID][Filename][SeqNo]
+    # [DATAFILE][Filename][SeqNo]
     # Client is responsible for writing the data to a file in order
-    DATAFILE_ACK = 7 # Sent by client to server to ACK  data
+    DATAFILE_ACK = 7 # Sent by client to server to ACK data
     # [DATAFILE_ACK][ClientID][Filename][SeqNo]
     # Server can move on to next file when current file is done sending
     JOB_START = 8 # Sent by server to client to tell client to begin job
@@ -48,6 +48,16 @@ class MessageTypes(Enum):
     JOB_REDUCING_DONE = 12 # Same as above, but for reducing
     # [JOB_REDUCING_DONE][ClientID][JobID]
 
+    MAPPER_FILE = 13
+    # [MAPPER_FILE][Filename][SeqNo]
+    MAPPER_FILE_ACK = 14
+    # [MAPPER_FILE_ACK][SeqNo]
+    REDUCER_FILE = 15
+    # [REDUCER_FILE][Filename][SeqNo]
+    REDUCER_FILE_ACK = 16
+    # [REDUCER_FILE_ACK][SeqNo]
+
+
     SERVER_ERROR = 98
     # [SERVER_ERROR][ERROR_CODE]
     # Error can mean a variety of things, it is up to the error handler to interpret the error code
@@ -58,21 +68,22 @@ class MessageTypes(Enum):
 
 
 class Message(object):
-    def __init__(self, m_type, body=None):
+    def __init__(self, m_type, filename='', body=''):
         self.m_type = m_type
         self.body = body
+        self.filename = filename
 
     def __str__(self):
-        return '<Message: type={m_type} body={body}>'.format(m_type=self.m_type, body=self.body)
+        return '<Message: type={m_type} body={body} filename={filename}>'.format(m_type=self.m_type, filename=self.filename, body=self.body)
 
     def has_body(self):
         return self.body
 
     def get_header_for_send(self):
-        return struct.pack(HEADER_FORMAT, self.m_type.value, len(self.body) if self.body else 0)
+        return struct.pack(HEADER_FORMAT, self.m_type.value, len(self.body) + len(self.filename))
 
     def get_body_for_send(self):
-        return struct.pack(str(len(self.body)) + 's', bytes(self.body, encoding='utf-8'))
+        return struct.pack(str(len(self.filename)) + 's' + str(len(self.body)) + 's', bytes(self.filename, encoding='utf-8') + bytes(self.body, encoding='utf-8'))
 
     def is_type(self, m_type):
         return m_type is self.m_type
@@ -98,9 +109,13 @@ class JobStartAckMessage(Message):
         super().__init__(MessageTypes.JOB_START_ACK)
 
 
-class DataFileMessage(Message):
-    def __init__(self, body):
-        super().__init__(MessageTypes.DATAFILE, body=body)
+class DatafileMessage(Message):
+    def __init__(self, filename, body):
+        super().__init__(MessageTypes.DATAFILE, filename=filename, body=body)
+
+class DatafileAckMessage(Message):
+    def __init__(self, filename, seq_no):
+        super().__init__(MessageTypes.DATAFILE_ACK, filename=filename)
 
 
 class JobMappingDone(Message):

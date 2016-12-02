@@ -1,6 +1,8 @@
-from messages import MessageTypes, SubscribeAckMessage
+from messages import *
 
 
+# I'm just worried that this might be a little too "stateless"
+# Can't reuse message types because there is no state
 def handle_message(message, connection):
     """
 
@@ -8,6 +10,7 @@ def handle_message(message, connection):
     :param connection: The WorkerConnection of this client
     :return: Message list to write to worker
     """
+
     if message.is_type(MessageTypes.SUBSCRIBE_MESSAGE):
         print('subscribe')
         connection.subscribe()
