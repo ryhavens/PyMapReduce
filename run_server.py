@@ -16,7 +16,7 @@ def main():
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
-    server.run()
+    server.Start()
 
 if __name__ == '__main__':
     main()

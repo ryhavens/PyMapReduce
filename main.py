@@ -14,22 +14,3 @@ f2 = open('f2.txt', 'r')
 reducer = Reducer(instream=f2, outstream=open('/dev/null','w'))
 reducer.Reduce()
 f2.close()
-
-
-class Job:
-	def __init__(self, JobID, MyMapper=None, MyReducer=None):
-		self.JobID = JobID
-		self.Mapper = MyMapper
-		self.Reducer = MyReducer
-
-	def SetMapper(self, MyMapper):
-		self.Mapper = MyMapper
-
-	def SetReducer(self, MyReducer):
-		self.Reducer = MyReducer
-
-	def ExecMapper(self):
-		self.Mapper.Map()
-
-	def ExecReducer(self):
-		self.Reducer.Reduce()

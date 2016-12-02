@@ -93,6 +93,11 @@ class JobReadyToReceiveMessage(Message):
         super().__init__(MessageTypes.JOB_READY_TO_RECEIVE)
 
 
+class JobStartAckMessage(Message):
+    def __init__(self):
+        super().__init__(MessageTypes.JOB_START_ACK)
+
+
 class DataFileMessage(Message):
     def __init__(self, body):
         super().__init__(MessageTypes.DATAFILE, body=body)
