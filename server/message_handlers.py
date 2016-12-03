@@ -5,25 +5,22 @@ def should_send_job_start(conn):
     return conn.datafile_ackd and conn.instructions_ackd
 
 
-def handle_message(message, connection, sub_jobs):
+def handle_message(message, connection):
     """
-
+    Process the messages received from workers and perform
+    any necessary operations accordingly
     :param message: The message to handle
     :param connection: The WorkerConnection of this client
     :return: Message list to write to worker
     """
+    connection.prev_message = message.m_type
     if message.is_type(MessageTypes.SUBSCRIBE_MESSAGE):
-        print('SUBSCRIBE_MESSAGE received')
-        print('subscribe')
         connection.subscribe()
-        connection.prev_message = MessageTypes.SUBSCRIBE_MESSAGE
         return [SubscribeAckMessage()]
 
     if message.is_type(MessageTypes.JOB_READY_TO_RECEIVE):
-        print('JOB_READY_TO_RECEIVE received')
         # Mark that this client has ack'd that a job it is
         # ready to receive the job
-        connection.prev_message = MessageTypes.JOB_READY_TO_RECEIVE
 
         job = connection.current_job
         job.pending_assignment = False
@@ -33,9 +30,7 @@ def handle_message(message, connection, sub_jobs):
         ]
 
     if message.is_type(MessageTypes.JOB_INSTRUCTIONS_FILE_ACK):
-        print('JOB_INSTRUCTIONS_FILE_ACK received')
         # Next the client needs to be sent the datafile
-        connection.prev_message = MessageTypes.JOB_INSTRUCTIONS_FILE_ACK
         connection.instructions_ackd = True
 
         if should_send_job_start(connection):
@@ -43,8 +38,6 @@ def handle_message(message, connection, sub_jobs):
         return []
 
     if message.is_type(MessageTypes.DATAFILE_ACK):
-        print('DATAFILE_ACK received')
-        connection.prev_message = MessageTypes.DATAFILE_ACK
         connection.datafile_ackd = True
 
         if should_send_job_start(connection):
@@ -52,13 +45,9 @@ def handle_message(message, connection, sub_jobs):
         return []
 
     if message.is_type(MessageTypes.JOB_START_ACK):
-        print('JOB_START_ACK received')
-        connection.prev_message = MessageTypes.JOB_START_ACK
         return []
 
     if message.is_type(MessageTypes.JOB_DONE):
-        print('JOB_DONE received')
-        connection.prev_message = MessageTypes.JOB_DONE
         connection.result_file = message.get_body()
 
         # End job
@@ -74,14 +63,3 @@ def handle_message(message, connection, sub_jobs):
         connection.prep_for_new_job()
 
         return [JobDoneAckMessage()]
-
-    if message.is_type(MessageTypes.JOB_MAPPING_DONE):
-        print('JOB_MAPPING_DONE received')
-        connection.prev_message = MessageTypes.JOB_MAPPING_DONE
-        return []
-
-    if message.is_type(MessageTypes.JOB_REDUCING_DONE):
-        print('JOB_REDUCING_DONE received')
-        connection.prev_message = MessageTypes.JOB_REDUCING_DONE
-        print('Client finished job!')
-        return []

@@ -1,20 +1,11 @@
 import importlib
-import os
 import socket
 import select
+from optparse import OptionParser
 
 from connection import PMRConnection
-from PMRProcessing.mapper.mapper import Mapper
-from PMRProcessing.reducer.reducer import Reducer
 from filesystems import SimpleFileSystem
 from messages import *
-
-
-## TODO REMOVE THESE
-reducer_class = Reducer
-mapper_class = Mapper
-
-from optparse import OptionParser
 
 
 class Client(object):
@@ -68,22 +59,23 @@ class Client(object):
                 # Start job
                 pkg = None
                 instructions_class = None
-                print(self.instructions_file)
                 try:
                     pkg = importlib.import_module(self.instructions_file)
                 except ImportError:
+                    # TODO: Respond with some sort of error so the server knows
                     print('Error: Could not load instructions module.')
                 try:
                     instructions_class = getattr(pkg, self.instructions_type)
                 except AttributeError:
+                    # TODO: Respond with some sort of error
                     print('Error: Module was loaded, but does not contain a "{}" class.'.format(self.instructions_type))
 
-                print(self.data_path)
                 with open(self.data_path, 'r') as in_file:
                     fs = SimpleFileSystem()
                     out_path = fs.get_writeable_file_path()
                     with fs.open(out_path, 'w') as out_file:
-                        task = instructions_class(instream=in_file, outstream=out_file)
+                        print(instructions_class)
+                        task = instructions_class(in_stream=in_file, out_stream=out_file)
                         task.run()
                     self.message_write_queue.append(JobDoneMessage(out_path))
                 self.prep_for_new_job()

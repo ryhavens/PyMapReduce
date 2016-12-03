@@ -23,6 +23,13 @@ class WorkerConnection(PMRConnection):
         self.subscribed = True
 
     def prep_for_new_job(self):
+        """
+        Called when the job is completely done executing
+
+        Reset this connection's properties so that it
+        is ready to accept a new job
+        :return:
+        """
         self.prev_message = MessageTypes.SUBSCRIBE_MESSAGE
         self.job_id = None
         self.current_job = None

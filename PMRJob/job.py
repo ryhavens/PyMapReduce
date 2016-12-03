@@ -3,7 +3,7 @@ import os
 from filesystems import SimpleFileSystem
 
 
-def fixed_size_partition(self, data_path, lines_per_partition=500):
+def fixed_size_partition(data_path, lines_per_partition=500):
     """
     Create n partitions of 500 lines each
     :return:
@@ -30,7 +30,7 @@ def fixed_size_partition(self, data_path, lines_per_partition=500):
     return partition_paths
 
 
-def stitch_data_files(self, job):
+def stitch_data_files(job):
     """
     Stitch the data_paths of a job together so that it can work on them
     Expects job.data_paths_list to be set
@@ -48,7 +48,7 @@ def stitch_data_files(self, job):
     job.data_path = out_file_path
 
 
-def sort_data_file(self, job):
+def sort_data_file(job):
     """
     Sorts the job.data_path file
     :param self:
@@ -61,14 +61,24 @@ def sort_data_file(self, job):
     os.system('cat {} | sort -k1,1 > {}'.format(in_path, job.data_path))
 
 
-class SubJob(object):
+class SubJob:
+    """
+    Represents a piece of the job that will be sent to a worker
+
+    It supports 'before' and 'after' tasks and can depend on other
+    other jobs finishing (see .is_ready_to_execute() for criteria)
+
+    When using a SubJob, pre_execute and post_execute should be run
+    before and after the job respectively
+    """
     def __init__(self,
                  id,
                  instruction_path,
                  instruction_type,
                  data_path=None,
 
-                 # List of jobs - Use if other jobs depend on the output of this job
+                 # List of jobs that need the results to continue
+                 # Use if other jobs depend on the output of this job
                  pass_result_to=[],
 
                  # Wait for several data-producing jobs to finish
@@ -101,6 +111,11 @@ class SubJob(object):
         self.pending_assignment = True
 
     def is_ready_to_execute(self):
+        """
+        Is this job ready to execute? I.e. is it waiting on data from
+        other jobs or not
+        :return:
+        """
         if self.pass_result_to:
             return True
 
@@ -112,11 +127,16 @@ class SubJob(object):
     def is_last(self):
         """
         Is this the last job to be done
+        I.e. does it have no dependencies?
         :return:
         """
         return not self.pass_result_to
 
     def pre_execute(self):
+        """
+        Run any do_before methods that were specified
+        :return:
+        """
         if self.do_before:
             if type(self.do_before) is list:
                 for action in self.do_before:
@@ -125,6 +145,13 @@ class SubJob(object):
                 self.do_before()
 
     def post_execute(self, output_path):
+        """
+        Run any do_after methods that were specified
+        Then pass the output_path to any jobs that
+        depend on it
+        :param output_path:
+        :return:
+        """
         if type(self.do_after) is list:
             for action in self.do_after:
                 action(self, output_path)

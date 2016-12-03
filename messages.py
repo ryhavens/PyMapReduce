@@ -5,8 +5,7 @@ HEADER_FORMAT = '!Bi'
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
 
-
-# jon : get the value by calling MessageTypes.--type--.value
+# Access the value by calling MessageTypes.--type--.value
 # e.g. MessageTypes.SUBSCRIBE_MESSAGE.value
 class MessageTypes(Enum):
     # format: 
@@ -45,12 +44,8 @@ class MessageTypes(Enum):
     # Phase is Mapper or Reducer
     # SeqNo is heartbeat #
     # Server logic should track rate of client
-    JOB_MAPPING_DONE = 13 # Sent by client to server to tell server it has finished mapping
-    # [JOB_MAPPING_DONE][ClientID][JobID]
-    JOB_REDUCING_DONE = 14 # Same as above, but for reducing
-    # [JOB_REDUCING_DONE][ClientID][JobID]
-    JOB_DONE = 15
-    JOB_DONE_ACK = 16
+    JOB_DONE = 13
+    JOB_DONE_ACK = 14
 
     SERVER_ERROR = 98
     # [SERVER_ERROR][ERROR_CODE]
@@ -146,16 +141,6 @@ class DataFileAckMessage(Message):
 class JobStartMessage(Message):
     def __init__(self):
         super().__init__(MessageTypes.JOB_START)
-
-
-class JobMappingDone(Message):
-    def __init__(self):
-        super().__init__(MessageTypes.JOB_MAPPING_DONE)
-
-
-class JobReducingDone(Message):
-    def __init__(self):
-        super().__init__(MessageTypes.JOB_REDUCING_DONE)
 
 
 class JobDoneMessage(Message):

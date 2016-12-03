@@ -14,7 +14,7 @@ from .message_handlers import handle_message
 class Server(object):
     _PORT = '8888'
     _HOST = 'localhost'
-    job_id = 0
+    job_id = 0  # Track job_ids so as not to reuse them
 
     def __init__(self):
         options, args = self.parse_opts()
@@ -29,8 +29,8 @@ class Server(object):
         self.connections_list = ConnectionsList()
 
         self.job_started = False
-        self.sub_jobs = list()
-        self.pending_jobs = list()  # Jobs not dependent on one job, but multiple
+        self.sub_jobs = list()  # Jobs to be executed at next opportunity
+        self.pending_jobs = list()  # Jobs that are blocked by something in sub_jobs
 
     def parse_opts(self):
         """
@@ -45,9 +45,18 @@ class Server(object):
         return parser.parse_args()
 
     def start(self):
+        """
+        Start the server by reading in information
+        and then kicking off event loop
+        :return:
+        """
         self.initialize_job()
 
     def stop(self):
+        """
+        Stop the server loop and clean up resources
+        :return:
+        """
         self.running = False
         while not self.connections_list.empty():
             conn = self.connections_list.pop()
@@ -170,7 +179,18 @@ class Server(object):
         self.run(mapper_name, reducer_name, datafile_name)
 
     def run(self, mapper_name, reducer_name, datafile):
+        """
+        The server main loop
 
+        For each loop, call do_processing to do any extraneous processing
+        Then block on select(..) and read/write from clients, handling any
+        messages that they send
+
+        :param mapper_name:
+        :param reducer_name:
+        :param datafile:
+        :return:
+        """
         while self.running:
             self.do_processing(mapper_name, reducer_name, datafile)
             print(self.connections_list)
@@ -191,7 +211,7 @@ class Server(object):
                     try:
                         message = conn.receive()
                         if message:
-                            to_write = handle_message(message, conn, self.sub_jobs)
+                            to_write = handle_message(message, conn)
                             while to_write:
                                 w_message = to_write.pop()
                                 conn.send_message(w_message)
