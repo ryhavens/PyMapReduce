@@ -47,6 +47,12 @@ class MessageTypes(Enum):
     JOB_DONE = 13
     JOB_DONE_ACK = 14
 
+    # Command messages
+    SUBMIT_JOB = 15  # Commander sends to server w/ mapper, reducer, data paths
+    SUBMIT_JOB_ACK = 16  # Server acks the command
+    SUBMITTED_JOB_FINISHED = 17  # Server announces completion w/ data path
+    SUBMITTED_JOB_FINISHED_ACK = 18  # Commander acks completion
+
     SERVER_ERROR = 98
     # [SERVER_ERROR][ERROR_CODE]
     # Error can mean a variety of things, it is up to the error handler to interpret the error code
@@ -151,3 +157,44 @@ class JobDoneMessage(Message):
 class JobDoneAckMessage(Message):
     def __init__(self):
         super().__init__(MessageTypes.JOB_DONE_ACK)
+
+
+class SubmitJobMessage(Message):
+    separator = ';;'
+
+    def __init__(self, mapper_name, reducer_name, data_file_path):
+        super().__init__(
+            MessageTypes.SUBMIT_JOB,
+            body=SubmitJobMessage.separator.join([mapper_name, reducer_name, data_file_path])
+        )
+
+    @staticmethod
+    def get_mapper_name(message):
+        return message.get_body().split(SubmitJobMessage.separator)[0]
+
+    @staticmethod
+    def get_reducer_name(message):
+        return message.get_body().split(SubmitJobMessage.separator)[1]
+
+    @staticmethod
+    def get_data_file_path(message):
+        return message.get_body().split(SubmitJobMessage.separator)[2]
+
+
+class SubmitJobAckMessage(Message):
+    def __init__(self):
+        super().__init__(MessageTypes.SUBMIT_JOB_ACK)
+
+
+class SubmittedJobFinishedMessage(Message):
+    def __init__(self, data_file_path):
+        super().__init__(MessageTypes.SUBMITTED_JOB_FINISHED, body=data_file_path)
+
+    @staticmethod
+    def get_data_file_path(message):
+        return message.get_body()
+
+
+class SubmittedJobFinishedAckMessage(Message):
+    def __init__(self):
+        super().__init__(MessageTypes.SUBMITTED_JOB_FINISHED_ACK)

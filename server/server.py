@@ -29,6 +29,7 @@ class Server(object):
         self.connections_list = ConnectionsList()
 
         self.job_started = False
+        self.job_submitter_connection = None  # The conn that submitted the current job
         self.sub_jobs = list()  # Jobs to be executed at next opportunity
         self.pending_jobs = list()  # Jobs that are blocked by something in sub_jobs
 
@@ -50,7 +51,6 @@ class Server(object):
         and then kicking off event loop
         :return:
         """
-        self.initialize_job()
         self.run()
 
     def stop(self):
@@ -97,58 +97,27 @@ class Server(object):
                 conn.current_job = job
                 conn.send_message(JobReadyMessage(str(job.id)))
 
-    def get_package_name(self, pkg_type):
+    def initialize_job(self, submitter, mapper_name, reducer_name, data_file_path):
         """
-        Prompt the user for the path to the {pkg_type} class
-        :param pkg_type:
+
         :return:
         """
-        print('Enter the package path to your {}:'.format(pkg_type))
-        while True:
-            name = sys.stdin.readline()
-            name = name.strip()  # truncate '\n'
-            try:
-                pkg = importlib.import_module(name)
-            except ImportError:
-                print('Could not load module. Please retry.')
-                continue
-            try:
-                _ = getattr(pkg, pkg_type)
-            except AttributeError:
-                print('Module was loaded, but does not contain a "{}" class. Please retry.'.format(pkg_type))
-                continue
-            break
-        return name
-
-    def get_data_file_path(self):
-        print('Enter the datafile path:')
-        while True:
-            datafile_name = sys.stdin.readline()
-            datafile_name = datafile_name.strip()  # truncate '\n'
-            try:
-                open(datafile_name, 'r').close()
-            except FileNotFoundError:
-                print('Could not load datafile. Please retry.')
-                continue
-            break
-        return datafile_name
-
-    def initialize_job(self):
-        """
-        Read in paths and verify them
-        Call self.run(..) when finished
-        :return:
-        """
-        mapper_name = self.get_package_name('Mapper')
-        reducer_name = self.get_package_name('Reducer')
-        data_file_path = self.get_data_file_path()
-
+        self.job_submitter_connection = submitter
         prep_job_for_execution(data_path=data_file_path,
                                reducer_name=reducer_name,
                                mapper_name=mapper_name,
                                pending_jobs=self.pending_jobs,
                                sub_jobs=self.sub_jobs,
                                get_next_job_id=self.get_next_job_id)
+
+    def mark_job_as_finished(self):
+        """
+        Prep server for new job
+        Called when commander acks the job completion
+        :return:
+        """
+        self.job_started = False
+        self.job_submitter_connection = None
 
     def run(self):
         """
@@ -182,7 +151,10 @@ class Server(object):
                     try:
                         message = conn.receive()
                         if message:
-                            to_write = handle_message(message, conn)
+                            to_write = handle_message(message, conn,
+                                                      initialize_job=self.initialize_job,
+                                                      current_job_connection=self.job_submitter_connection,
+                                                      mark_job_as_finished=self.mark_job_as_finished)
                             while to_write:
                                 w_message = to_write.pop()
                                 conn.send_message(w_message)
