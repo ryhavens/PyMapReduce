@@ -52,22 +52,6 @@ class Client(object):
         if len(self.message_read_queue):
             message = self.message_read_queue.pop()
 
-            # if message.m_type is MessageTypes.DATAFILE:
-            #     self.message_write_queue.append(JobStartAckMessage())
-            #     with open('client_map_out', 'w') as f:
-            #         print(message.body.splitlines())
-            #         mapper = mapper_class(instream=message.body.splitlines(), outstream=f)
-            #         mapper.Map()
-            #         self.message_write_queue.append(JobMappingDone())
-            #
-            #     os.system('cat client_map_out | sort -k1,1 > client_map_out_sorted')
-            #
-            #     with open('client_map_out_sorted', 'r') as map_f:
-            #         with open('client_reduce_out', 'w') as red_f:
-            #             reducer = reducer_class(instream=map_f, outstream=red_f)
-            #             reducer.Reduce()
-            #             self.message_write_queue.append(JobReducingDone())
-
             if message.m_type is MessageTypes.JOB_READY:
                 if not self.has_job:
                     self.has_job = True
@@ -101,15 +85,8 @@ class Client(object):
                     with fs.open(out_path, 'w') as out_file:
                         task = instructions_class(instream=in_file, outstream=out_file)
                         task.run()
-
-                    # TODO: This is a hack for now - remove the sorting when possible
-                    if self.instructions_type == 'Mapper':
-                        sorted_path = fs.get_writeable_file_path()
-                        os.system('cat {} | sort -k1,1 > {}'.format(out_path, sorted_path))
-                        self.message_write_queue.append(JobDoneMessage(sorted_path))
-                    else:
-                        self.message_write_queue.append(JobDoneMessage(out_path))
-                # self.prep_for_new_job()
+                    self.message_write_queue.append(JobDoneMessage(out_path))
+                self.prep_for_new_job()
 
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

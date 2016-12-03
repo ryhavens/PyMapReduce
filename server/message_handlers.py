@@ -61,15 +61,11 @@ def handle_message(message, connection, sub_jobs):
         connection.prev_message = MessageTypes.JOB_DONE
         connection.result_file = message.get_body()
 
-        # Any jobs that depended on this job finishing should be moved
-        # to the queue
+        # End job
         job = connection.current_job
         print(job.pass_result_to)
-        if job.pass_result_to:
-            for new_job in job.pass_result_to:
-                new_job.data_path = message.get_body()
-                sub_jobs.append(new_job)
-            print(sub_jobs)
+        if not job.is_last():
+            job.post_execute(connection.result_file)
         else:
             # No jobs depend on this finishing so print the result
             print('Job finished. Output located in: {}'.format(connection.result_file))

@@ -27,13 +27,8 @@ class MessageTypes(Enum):
     # [JOB_READY][JobID], JobID unique to job
     JOB_READY_TO_RECEIVE = 5  # Sent by client to acknowledge job ready, ready to receive job
     # [JOB_READY_TO_RECEIVE][ClientID][JobID], ACKs job ID
-
-
     JOB_INSTRUCTIONS_FILE = 6
     JOB_INSTRUCTIONS_FILE_ACK = 7
-
-
-
     DATAFILE = 8 # Sent by server to client to give it the data for the current job
     # [DATAFILE][ClientID][Filename][SeqNo]
     # Client is responsible for writing the data to a file in order
@@ -54,8 +49,6 @@ class MessageTypes(Enum):
     # [JOB_MAPPING_DONE][ClientID][JobID]
     JOB_REDUCING_DONE = 14 # Same as above, but for reducing
     # [JOB_REDUCING_DONE][ClientID][JobID]
-
-
     JOB_DONE = 15
     JOB_DONE_ACK = 16
 
