@@ -27,26 +27,37 @@ class MessageTypes(Enum):
     # [JOB_READY][JobID], JobID unique to job
     JOB_READY_TO_RECEIVE = 5  # Sent by client to acknowledge job ready, ready to receive job
     # [JOB_READY_TO_RECEIVE][ClientID][JobID], ACKs job ID
-    DATAFILE = 6 # Sent by server to client to give it the data for the current job
+
+
+    JOB_INSTRUCTIONS_FILE = 6
+    JOB_INSTRUCTIONS_FILE_ACK = 7
+
+
+
+    DATAFILE = 8 # Sent by server to client to give it the data for the current job
     # [DATAFILE][ClientID][Filename][SeqNo]
     # Client is responsible for writing the data to a file in order
-    DATAFILE_ACK = 7 # Sent by client to server to ACK  data
+    DATAFILE_ACK = 9 # Sent by client to server to ACK  data
     # [DATAFILE_ACK][ClientID][Filename][SeqNo]
     # Server can move on to next file when current file is done sending
-    JOB_START = 8 # Sent by server to client to tell client to begin job
+    JOB_START = 10 # Sent by server to client to tell client to begin job
     # [JOB_START][ClientID][JobID]
     # If client does not have data for current job it will send an error
-    JOB_START_ACK = 9 # Sent by client to server to notify job has begun
+    JOB_START_ACK = 11 # Sent by client to server to notify job has begun
     # [JOB_START_ACK][ClientID][JobID]
-    JOB_HEARTBEAT = 10 # Sent by client to server to periodically update server on job progress for client
+    JOB_HEARTBEAT = 12 # Sent by client to server to periodically update server on job progress for client
     # [JOB_HEARTBEAT][ClientID][JobID][Phase][SeqNo]
     # Phase is Mapper or Reducer
     # SeqNo is heartbeat #
     # Server logic should track rate of client
-    JOB_MAPPING_DONE = 11 # Sent by client to server to tell server it has finished mapping
+    JOB_MAPPING_DONE = 13 # Sent by client to server to tell server it has finished mapping
     # [JOB_MAPPING_DONE][ClientID][JobID]
-    JOB_REDUCING_DONE = 12 # Same as above, but for reducing
+    JOB_REDUCING_DONE = 14 # Same as above, but for reducing
     # [JOB_REDUCING_DONE][ClientID][JobID]
+
+
+    JOB_DONE = 15
+    JOB_DONE_ACK = 16
 
     SERVER_ERROR = 98
     # [SERVER_ERROR][ERROR_CODE]
@@ -56,26 +67,32 @@ class MessageTypes(Enum):
     # Additionally specified is the client ID
 
 
-
 class Message(object):
     def __init__(self, m_type, body=None):
         self.m_type = m_type
-        self.body = body
+        self._body = body  # body must be a string or there will be errors
 
     def __str__(self):
-        return '<Message: type={m_type} body={body}>'.format(m_type=self.m_type, body=self.body)
+        return '<Message: type={m_type} body={body}>'.format(m_type=self.m_type, body=self._body)
 
     def has_body(self):
-        return self.body
+        return self._body
 
     def get_header_for_send(self):
-        return struct.pack(HEADER_FORMAT, self.m_type.value, len(self.body) if self.body else 0)
+        return struct.pack(HEADER_FORMAT, self.m_type.value, len(self._body) if self._body else 0)
 
     def get_body_for_send(self):
-        return struct.pack(str(len(self.body)) + 's', bytes(self.body, encoding='utf-8'))
+        return struct.pack(str(len(self._body)) + 's', bytes(self._body, encoding='utf-8'))
 
     def is_type(self, m_type):
         return m_type is self.m_type
+
+    def get_body(self):
+        """
+        Get body of received message
+        :return:
+        """
+        return str(self._body, encoding='utf-8')
 
 
 class SubscribeMessage(Message):
@@ -88,6 +105,11 @@ class SubscribeAckMessage(Message):
         super().__init__(MessageTypes.SUBSCRIBE_ACK_MESSAGE)
 
 
+class JobReadyMessage(Message):
+    def __init__(self, job_id):
+        super().__init__(MessageTypes.JOB_READY, job_id)
+
+
 class JobReadyToReceiveMessage(Message):
     def __init__(self):
         super().__init__(MessageTypes.JOB_READY_TO_RECEIVE)
@@ -98,9 +120,39 @@ class JobStartAckMessage(Message):
         super().__init__(MessageTypes.JOB_START_ACK)
 
 
+class JobInstructionsFileMessage(Message):
+    separator = ';;'
+
+    def __init__(self, path, type):
+        super().__init__(MessageTypes.JOB_INSTRUCTIONS_FILE, '{path};;{type}'.format(path=path, type=type))
+
+    @staticmethod
+    def get_path_from_message(message):
+        return message.get_body().split(JobInstructionsFileMessage.separator)[0]
+
+    @staticmethod
+    def get_type_from_message(message):
+        return message.get_body().split(JobInstructionsFileMessage.separator)[1]
+
+
+class JobInstructionsFileAckMessage(Message):
+    def __init__(self):
+        super().__init__(MessageTypes.JOB_INSTRUCTIONS_FILE_ACK)
+
+
 class DataFileMessage(Message):
-    def __init__(self, body):
-        super().__init__(MessageTypes.DATAFILE, body=body)
+    def __init__(self, path):
+        super().__init__(MessageTypes.DATAFILE, path)
+
+
+class DataFileAckMessage(Message):
+    def __init__(self):
+        super().__init__(MessageTypes.DATAFILE_ACK)
+
+
+class JobStartMessage(Message):
+    def __init__(self):
+        super().__init__(MessageTypes.JOB_START)
 
 
 class JobMappingDone(Message):
@@ -111,3 +163,13 @@ class JobMappingDone(Message):
 class JobReducingDone(Message):
     def __init__(self):
         super().__init__(MessageTypes.JOB_REDUCING_DONE)
+
+
+class JobDoneMessage(Message):
+    def __init__(self, path):
+        super().__init__(MessageTypes.JOB_DONE, path)
+
+
+class JobDoneAckMessage(Message):
+    def __init__(self):
+        super().__init__(MessageTypes.JOB_DONE_ACK)

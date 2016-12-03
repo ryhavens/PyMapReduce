@@ -1,10 +1,16 @@
 from connection import PMRConnection
+from messages import MessageTypes
 
 
 class WorkerConnection(PMRConnection):
     def __init__(self, file_descriptor, address=None):
         self.subscribed = False
         self.prev_message = None
+        self.job_id = None
+        self.current_job = None
+
+        self.instructions_ackd = False
+        self.data_ackd = False
         super().__init__(file_descriptor, address)
 
     def __str__(self):
@@ -15,6 +21,13 @@ class WorkerConnection(PMRConnection):
 
     def subscribe(self):
         self.subscribed = True
+
+    def prep_for_new_job(self):
+        self.prev_message = MessageTypes.SUBSCRIBE_MESSAGE
+        self.job_id = None
+        self.current_job = None
+        self.instructions_ackd = False
+        self.data_ackd = False
 
 
 class ConnectionsList(object):

@@ -32,5 +32,8 @@ class Mapper(BeatingProcess):
 				self.progress += 1
 		self.EndHeartbeat()
 
+	def run(self):
+		self.Map()
+
 
 

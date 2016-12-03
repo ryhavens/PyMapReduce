@@ -52,3 +52,6 @@ class Reducer(BeatingProcess):
 			self.outstream.write('%s\t%s\n' % (current_word, current_count))
 
 		self.EndHeartbeat()
+
+	def run(self):
+		self.Reduce()
