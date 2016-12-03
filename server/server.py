@@ -4,7 +4,7 @@ import socket
 import select
 from optparse import OptionParser
 
-from PMRJob.job import SubJob, fixed_size_partition, stitch_data_files, sort_data_file
+from PMRJob.job import prep_job_for_execution
 from connection import ClientDisconnectedException
 from messages import JobReadyMessage
 from .server_connections import WorkerConnection, ConnectionsList
@@ -51,6 +51,7 @@ class Server(object):
         :return:
         """
         self.initialize_job()
+        self.run()
 
     def stop(self):
         """
@@ -64,41 +65,12 @@ class Server(object):
             conn.file_descriptor.close()
         self.sock.close()
 
-    def do_processing(self, mapper_name, reducer_name, data_path):
+    def update_job_distribution(self):
         """
-        Do any necessary processing that isn't linked to one
-        particular client
-        Runs on every server loop
+        Move pending jobs that are ready to the sub_jobs queue for execution
+        Assign jobs in sub_jobs to clients
         :return:
         """
-
-        # Assuming one overall job
-        # Current tactic is to spread out the mapping
-        # and have one reducer job depending on them finishing
-        if not self.job_started:
-            self.job_started = True
-            partitions = fixed_size_partition(data_path)
-
-            self.pending_jobs.append(SubJob(
-                id=self.get_next_job_id(),
-                instruction_path=reducer_name,
-                instruction_type='Reducer',
-                data_paths_list=[],
-                num_data_paths_required=len(partitions),
-                # Stitch files together and sort output before start reducer
-                do_before=[stitch_data_files, sort_data_file]
-            ))
-
-            for partition_path in partitions:
-                self.sub_jobs.append(SubJob(
-                    id=self.get_next_job_id(),
-                    instruction_path=mapper_name,
-                    instruction_type='Mapper',
-                    data_path=partition_path,
-                    pass_result_to=self.pending_jobs[0]
-                ))
-
-        # Find any pending jobs that are ready to be done
         pending_jobs_to_pop = []
         for job in self.pending_jobs:
             if job.is_ready_to_execute():
@@ -125,60 +97,60 @@ class Server(object):
                 conn.current_job = job
                 conn.send_message(JobReadyMessage(str(job.id)))
 
+    def get_package_name(self, pkg_type):
+        """
+        Prompt the user for the path to the {pkg_type} class
+        :param pkg_type:
+        :return:
+        """
+        print('Enter the package path to your {}:'.format(pkg_type))
+        while True:
+            name = sys.stdin.readline()
+            name = name.strip()  # truncate '\n'
+            try:
+                pkg = importlib.import_module(name)
+            except ImportError:
+                print('Could not load module. Please retry.')
+                continue
+            try:
+                _ = getattr(pkg, pkg_type)
+            except AttributeError:
+                print('Module was loaded, but does not contain a "{}" class. Please retry.'.format(pkg_type))
+                continue
+            break
+        return name
+
+    def get_data_file_path(self):
+        print('Enter the datafile path:')
+        while True:
+            datafile_name = sys.stdin.readline()
+            datafile_name = datafile_name.strip()  # truncate '\n'
+            try:
+                open(datafile_name, 'r').close()
+            except FileNotFoundError:
+                print('Could not load datafile. Please retry.')
+                continue
+            break
+        return datafile_name
+
     def initialize_job(self):
         """
         Read in paths and verify them
         Call self.run(..) when finished
         :return:
         """
-        mapper_name = None
-        reducer_name = None
+        mapper_name = self.get_package_name('Mapper')
+        reducer_name = self.get_package_name('Reducer')
+        data_file_path = self.get_data_file_path()
 
-        print('Please specify the path to where your Mapper is located now:')
-        while True:
-            mapper_name = sys.stdin.readline()
-            mapper_name = mapper_name.strip()  # truncate '\n'
-            try:
-                mapper_pkg = importlib.import_module(mapper_name)
-            except ImportError:
-                print('Could not load module. Please retry.')
-                continue
-            try:
-                mapper_class = mapper_pkg.Mapper
-            except AttributeError:
-                print('Module was loaded, but does not contain a "Mapper" class. Please retry.')
-                continue
-            break
-        print('Please specify the path to where your Reducer is located now:')
-        while True:
-            reducer_name = sys.stdin.readline()
-            reducer_name = reducer_name.strip()  # truncate '\n'
-            try:
-                reducer_pkg = importlib.import_module(reducer_name)
-            except ImportError:
-                print('Could not load module. Please retry.')
-                continue
-            try:
-                reducer_class = reducer_pkg.Reducer
-            except AttributeError:
-                print('Module was loaded, but does not contain a "Reducer" class. Please retry.')
-                continue
-            break
-        print('Please specify the path to your Data file now:')
-        while True:
-            datafile_name = sys.stdin.readline()
-            datafile_name = datafile_name.strip()  # truncate '\n'
-            try:
-                datafile = open(datafile_name, 'r')
-                datafile.close()
-            except FileNotFoundError:
-                print('Could not load datafile. Please retry.')
-                continue
-            break
+        prep_job_for_execution(data_path=data_file_path,
+                               reducer_name=reducer_name,
+                               mapper_name=mapper_name,
+                               pending_jobs=self.pending_jobs,
+                               sub_jobs=self.sub_jobs,
+                               get_next_job_id=self.get_next_job_id)
 
-        self.run(mapper_name, reducer_name, datafile_name)
-
-    def run(self, mapper_name, reducer_name, datafile):
+    def run(self):
         """
         The server main loop
 
@@ -192,7 +164,6 @@ class Server(object):
         :return:
         """
         while self.running:
-            self.do_processing(mapper_name, reducer_name, datafile)
             print(self.connections_list)
             read_list = [self.sock]
             read_list += self.connections_list.get_read_set()
@@ -215,6 +186,7 @@ class Server(object):
                             while to_write:
                                 w_message = to_write.pop()
                                 conn.send_message(w_message)
+                            self.update_job_distribution()
                     except (ClientDisconnectedException, ConnectionResetError) as e:
                         self.connections_list.remove(s)
 
