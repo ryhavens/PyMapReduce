@@ -97,3 +97,4 @@ client_map_out_sorted
 client_reduce_out
 partition*
 temp/
+brown_lg.txt

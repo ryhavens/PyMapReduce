@@ -11,7 +11,7 @@ def main():
     server = Server()
 
     def signal_handler(signal, frame):
-        print('Shutting down...')
+        server.stop_gui()
         server.stop()
         sys.exit(0)
 

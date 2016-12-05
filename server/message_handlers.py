@@ -1,8 +1,48 @@
+import importlib
+import random
+import string
+
 from messages import *
+from filesystems import SimpleFileSystem
 
 
 def should_send_job_start(conn):
     return conn.datafile_ackd and conn.instructions_ackd
+
+
+def is_valid_package_path(package_path, cls):
+    """
+    Check if the provided package path is valid
+
+    Example path: PMRProcessing.mapper.word_count_mapper
+    :param package_path: The package path to verify
+    :param cls: The class to check for in the package
+    :return: boolean
+    """
+    try:
+        pkg = importlib.import_module(package_path)
+    except ImportError:
+        return False
+    try:
+        _ = getattr(pkg, cls)
+        return True
+    except AttributeError:
+        return False
+
+
+def is_valid_file_path(path):
+    """
+    Check if the provided file path is valid
+
+    :param path: the file path
+    :return: boolean
+    """
+    sf = SimpleFileSystem()
+    try:
+        sf.close(sf.open(path, 'r'))
+        return True
+    except FileNotFoundError:
+        return False
 
 
 def handle_message(message, connection,
@@ -28,12 +68,30 @@ def handle_message(message, connection,
         reducer_name = SubmitJobMessage.get_reducer_name(message)
         data_file_path = SubmitJobMessage.get_data_file_path(message)
 
-        initialize_job(connection, mapper_name, reducer_name, data_file_path)
+        invalid_fields = []
+        if not is_valid_package_path(mapper_name, 'Mapper'):
+            invalid_fields.append(mapper_name)
+        if not is_valid_package_path(reducer_name, 'Reducer'):
+            invalid_fields.append(reducer_name)
+        if not is_valid_file_path(data_file_path):
+            invalid_fields.append(data_file_path)
 
-        return [SubmitJobAckMessage()]
+        if invalid_fields:
+            # Not valid
+            return [SubmitJobDeniedMessage(
+                body='{fields} {verb} invalid path{s}.'.format(
+                    fields=', '.join(invalid_fields),
+                    verb='is' if len(invalid_fields) == 1 else 'are',
+                    s='' if len(invalid_fields) == 1 else ''
+                )
+            )]
+        else:
+            initialize_job(connection, mapper_name, reducer_name, data_file_path)
+            return [SubmitJobAckMessage()]
 
     if message.is_type(MessageTypes.SUBSCRIBE_MESSAGE):
         connection.subscribe()
+        connection.worker_id = 'w-' + ''.join(random.choice(string.ascii_lowercase) for _ in range(5))
         return [SubscribeAckMessage()]
 
     if message.is_type(MessageTypes.JOB_READY_TO_RECEIVE):
@@ -70,12 +128,10 @@ def handle_message(message, connection,
 
         # End job
         job = connection.current_job
-        print(job.pass_result_to)
         if not job.is_last():
             job.post_execute(connection.result_file)
         else:
             # No jobs depend on this finishing so send back the result
-            print('Job finished. Returning results to submitter.')
             current_job_connection.send_message(
                 SubmittedJobFinishedMessage(connection.result_file)
             )
@@ -87,5 +143,4 @@ def handle_message(message, connection,
 
     if message.is_type(MessageTypes.SUBMITTED_JOB_FINISHED_ACK):
         mark_job_as_finished()
-        print('Ready for new job')
 

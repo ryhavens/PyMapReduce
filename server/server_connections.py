@@ -5,6 +5,7 @@ from messages import MessageTypes
 class WorkerConnection(PMRConnection):
     def __init__(self, file_descriptor, address=None):
         self.subscribed = False
+        self.worker_id = ''
         self.prev_message = None
         self.job_id = None
         self.current_job = None
@@ -35,6 +36,18 @@ class WorkerConnection(PMRConnection):
         self.current_job = None
         self.instructions_ackd = False
         self.data_ackd = False
+
+    def return_resources(self):
+        """
+        Called in case of a disconnection
+
+        Should mark any job fragments that were currently
+        in progress as up for grabs again
+        :return:
+        """
+        if self.current_job:
+            self.current_job.client = None
+            self.current_job.pending_assignment = False
 
 
 class ConnectionsList(object):
