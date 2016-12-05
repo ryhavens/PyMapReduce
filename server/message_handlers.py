@@ -1,4 +1,6 @@
 import importlib
+import random
+import string
 
 from messages import *
 from filesystems import SimpleFileSystem
@@ -89,6 +91,7 @@ def handle_message(message, connection,
 
     if message.is_type(MessageTypes.SUBSCRIBE_MESSAGE):
         connection.subscribe()
+        connection.worker_id = 'w-' + ''.join(random.choice(string.ascii_lowercase) for _ in range(5))
         return [SubscribeAckMessage()]
 
     if message.is_type(MessageTypes.JOB_READY_TO_RECEIVE):
@@ -125,12 +128,10 @@ def handle_message(message, connection,
 
         # End job
         job = connection.current_job
-        print(job.pass_result_to)
         if not job.is_last():
             job.post_execute(connection.result_file)
         else:
             # No jobs depend on this finishing so send back the result
-            print('Job finished. Returning results to submitter.')
             current_job_connection.send_message(
                 SubmittedJobFinishedMessage(connection.result_file)
             )
@@ -142,5 +143,4 @@ def handle_message(message, connection,
 
     if message.is_type(MessageTypes.SUBMITTED_JOB_FINISHED_ACK):
         mark_job_as_finished()
-        print('Ready for new job')
 

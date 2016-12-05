@@ -5,6 +5,7 @@ from messages import MessageTypes
 class WorkerConnection(PMRConnection):
     def __init__(self, file_descriptor, address=None):
         self.subscribed = False
+        self.worker_id = ''
         self.prev_message = None
         self.job_id = None
         self.current_job = None

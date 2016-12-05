@@ -1,5 +1,5 @@
-import sys
-import importlib
+import time
+import curses
 import socket
 import select
 from optparse import OptionParser
@@ -25,13 +25,28 @@ class Server(object):
         self.sock.listen(10)  # Backlog of 10
 
         self.running = True
-        print('Server running on HOST {}, PORT {}'.format(self.server_address[0], self.server_address[1]))
         self.connections_list = ConnectionsList()
 
         self.job_started = False
         self.job_submitter_connection = None  # The conn that submitted the current job
         self.sub_jobs = list()  # Jobs to be executed at next opportunity
         self.pending_jobs = list()  # Jobs that are blocked by something in sub_jobs
+
+        self.show_info_pane = options.info is None  # Would be False for no
+        if self.show_info_pane:
+            self.stdscr = curses.initscr()  # For the info pane
+            curses.noecho()  # Don't show typed characters
+
+        self.slow = options.slow
+
+    def stop_gui(self):
+        """
+        Cleans up the curses settings to return terminal
+        to a usable mode
+        :return:
+        """
+        if self.show_info_pane:
+            curses.endwin()
 
     def parse_opts(self):
         """
@@ -43,6 +58,10 @@ class Server(object):
                           help='port to bind to', type='int', default=self._PORT)
         parser.add_option('-s', '--host', dest='host',
                           help='host address to bind to', type='string', default=self._HOST)
+        parser.add_option('-n', '--no-info', dest='info',
+                          help='don\'t show the informational pane (useful for printing)', action='store_false')
+        parser.add_option('--slow', dest='slow',
+                          help='slow down event loop for testing', action='store_true')
         return parser.parse_args()
 
     def start(self):
@@ -89,7 +108,6 @@ class Server(object):
 
         for index, job in enumerate(self.sub_jobs):
             if job.client is None and conns:
-                print('Assigning job {} to conn'.format(job.id))
                 conn = conns.pop()
                 job.pre_execute()
                 job.client = conn
@@ -103,6 +121,7 @@ class Server(object):
         :return:
         """
         self.job_submitter_connection = submitter
+        self.job_started = True
         prep_job_for_execution(data_path=data_file_path,
                                reducer_name=reducer_name,
                                mapper_name=mapper_name,
@@ -119,6 +138,38 @@ class Server(object):
         self.job_started = False
         self.job_submitter_connection = None
 
+    def update_interface(self):
+        """
+        Update the info pane
+        :return:
+        """
+        self.stdscr.erase()
+
+        line_number = 0
+        self.stdscr.addstr(line_number, 0, 'PyMapReduce Master Status')
+        line_number += 1
+        self.stdscr.addstr(line_number, 0,
+                           'Server running on HOST {}, PORT {}'.format(self.server_address[0], self.server_address[1]))
+        line_number += 2
+        self.stdscr.addstr(line_number, 0,
+                           '{} workers'.format(len([c for c in self.connections_list.connections if c.subscribed])))
+
+        for i, conn in enumerate(self.connections_list.connections):
+            if conn.subscribed:
+                line_number += 1
+                self.stdscr.addstr(line_number, 0, conn.worker_id + ' ' + ('working' if conn.current_job else 'idle'))
+
+        line_number += 2
+        if self.job_started:
+            total_tasks = len(self.sub_jobs) + len(self.pending_jobs)
+            tasks_complete = len([j for j in self.sub_jobs + self.pending_jobs if j.client])
+            percent = round(tasks_complete / total_tasks * 100)
+            self.stdscr.addstr(line_number, 0, 'Running job... {percent}% complete'.format(percent=percent))
+        else:
+            self.stdscr.addstr(line_number, 0, 'Waiting for job...')
+
+        self.stdscr.refresh()
+
     def run(self):
         """
         The server main loop
@@ -133,7 +184,10 @@ class Server(object):
         :return:
         """
         while self.running:
-            print(self.connections_list)
+            if self.slow:
+                time.sleep(.5)
+            if self.show_info_pane:
+                self.update_interface()
             read_list = [self.sock]
             read_list += self.connections_list.get_read_set()
             write_list = self.connections_list.get_write_set()
