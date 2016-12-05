@@ -27,7 +27,7 @@ def parse_opts():
                       help='the reducer package path', type='string',
                       default='PMRProcessing.reducer.word_count_reducer')
     parser.add_option('-d', '--datafile', dest='datafile',
-                      help='the datafile path', type='string', default='f1.txt')
+                      help='the datafile path', type='string', default='brown.txt')
     return parser.parse_args()
 
 
