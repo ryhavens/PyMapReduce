@@ -77,7 +77,11 @@ class Client(object):
 
         while True:
             self.do_processing()
-            readable, writeable, _ = select.select([sock], [sock], [])
+
+            if self.message_write_queue:
+                readable, writeable, _ = select.select([sock], [sock], [])
+            else:
+                readable, _, _ = select.select([sock], [], [])
 
             if readable:
                 message = connection.receive()
