@@ -49,15 +49,7 @@ def main():
     connection.write()
 
     # Wait for ack
-    readable, _, _ = select.select([sock], [], [])
-    if readable:
-        message = connection.receive()
-        if message and message.is_type(MessageTypes.SUBMIT_JOB_ACK):
-            print('Server acknowledged job submission')
-        else:
-            print('Received unexpected message from server')
-
-    # Wait for job completion
+    job_accepted = False
     complete = False
     while not complete:
         readable, _, _ = select.select([sock], [], [])
@@ -66,16 +58,35 @@ def main():
             if message:
                 complete = True
 
-    if message.is_type(MessageTypes.SUBMITTED_JOB_FINISHED):
-        print('Job finished. Output located at: {}'.format(
-            SubmittedJobFinishedMessage.get_data_file_path(message)
-        ))
+    if message and message.is_type(MessageTypes.SUBMIT_JOB_ACK):
+        job_accepted = True
+        print('Server acknowledged job submission')
+    elif message and message.is_type(MessageTypes.SUBMIT_JOB_DENIED):
+        print('Job denied: {}'.format(message.get_body()))
     else:
+        print(message)
         print('Received unexpected message from server')
 
-    # Ack completion
-    connection.send_message(SubmittedJobFinishedAckMessage())
-    connection.write()
+    if job_accepted:
+        # Wait for job completion
+        complete = False
+        while not complete:
+            readable, _, _ = select.select([sock], [], [])
+            if readable:
+                message = connection.receive()
+                if message:
+                    complete = True
+
+        if message.is_type(MessageTypes.SUBMITTED_JOB_FINISHED):
+            print('Job finished. Output located at: {}'.format(
+                SubmittedJobFinishedMessage.get_data_file_path(message)
+            ))
+        else:
+            print('Received unexpected message from server')
+
+        # Ack completion
+        connection.send_message(SubmittedJobFinishedAckMessage())
+        connection.write()
     connection.file_descriptor.close()
 
 if __name__ == '__main__':
