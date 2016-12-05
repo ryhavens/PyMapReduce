@@ -11,6 +11,6 @@ f1.close()
 os.system('cat f1.txt | sort -k1,1 > f2.txt')
 
 f2 = open('f2.txt', 'r')
-reducer = Reducer(in_stream=f2, out_stream=open('/dev/null', 'w'))
+reducer = Reducer(in_stream=f2, out_stream=open('right.txt', 'w'))
 reducer.reduce()
 f2.close()

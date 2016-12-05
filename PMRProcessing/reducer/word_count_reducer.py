@@ -23,13 +23,9 @@ class Reducer(BeatingProcess, PMRJob):
         Simple count reduce
         Assumes words sorted by key
         """
-        self.progress = 0
         current_word = None
         current_count = 0
         word = None
-
-        self.start_time = time.time()
-        self.BeginHeartbeat()
 
         for line in self.in_stream:
             line = line.strip()
@@ -52,7 +48,9 @@ class Reducer(BeatingProcess, PMRJob):
         if word and word == current_word:
             self.out_stream.write('%s\t%s\n' % (current_word, current_count))
 
-        self.EndHeartbeat()
-
     def run(self):
+        self.progress = 0
+        self.start_time = time.time()
+        self.BeginHeartbeat()
         self.reduce()
+        self.EndHeartbeat()

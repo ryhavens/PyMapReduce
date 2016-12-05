@@ -22,16 +22,16 @@ class Mapper(BeatingProcess, PMRJob):
         """
         Simple count map
         """
-        self.progress = 0
-        self.start_time = time.time()
-        self.BeginHeartbeat()
         for line in self.in_stream:
             line = line.strip()
             words = line.split()
             for word in words:
                 self.out_stream.write('%s\t%s\n' % (word, 1))
                 self.progress += 1
-        self.EndHeartbeat()
 
     def run(self):
+        self.progress = 0
+        self.start_time = time.time()
+        self.BeginHeartbeat()
         self.map()
+        self.EndHeartbeat()
