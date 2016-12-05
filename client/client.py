@@ -2,6 +2,7 @@ import importlib
 import socket
 import select
 from optparse import OptionParser
+import time
 
 from connection import PMRConnection
 from filesystems import SimpleFileSystem
@@ -41,7 +42,7 @@ class Client(object):
 
     def do_processing(self):
         if len(self.message_read_queue):
-            message = self.message_read_queue.pop()
+            message = self.message_read_queue.pop(0)
 
             if message.m_type is MessageTypes.JOB_READY:
                 if not self.has_job:
@@ -57,18 +58,35 @@ class Client(object):
                 self.message_write_queue.append(DataFileAckMessage())
             elif message.m_type is MessageTypes.JOB_START:
                 # Start job
-                pkg = importlib.import_module(self.instructions_file)
-                instructions_class = getattr(pkg, self.instructions_type)
+                pkg = None
+                instructions_class = None
+                try:
+                    pkg = importlib.import_module(self.instructions_file)
+                except ImportError:
+                    # TODO: Respond with some sort of error so the server knows
+                    print('Error: Could not load instructions module.')
+                try:
+                    instructions_class = getattr(pkg, self.instructions_type)
+                except AttributeError:
+                    # TODO: Respond with some sort of error
+                    print('Error: Module was loaded, but does not contain a "{}" class.'.format(self.instructions_type))
 
                 with open(self.data_path, 'r') as in_file:
                     fs = SimpleFileSystem()
                     out_path = fs.get_writeable_file_path()
                     with fs.open(out_path, 'w') as out_file:
+                        print(instructions_class)
                         task = instructions_class(in_stream=in_file, out_stream=out_file)
+                        task.SetBeatMethod(lambda: 
+                            self.message_write_queue.append(JobHeartbeatMessage(
+                                str(task.progress), 
+                                str(task.progress/(time.time() - task.start_time))
+                            )))
+                        task.SetDieMethod(lambda: [
+                            self.message_write_queue.append(JobDoneMessage(out_path)),
+                            self.prep_for_new_job()
+                            ])
                         task.run()
-                    self.message_write_queue.append(JobDoneMessage(out_path))
-                self.prep_for_new_job()
-
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.server_address)
@@ -77,11 +95,7 @@ class Client(object):
 
         while True:
             self.do_processing()
-
-            if self.message_write_queue:
-                readable, writeable, _ = select.select([sock], [sock], [])
-            else:
-                readable, _, _ = select.select([sock], [], [])
+            readable, writeable, _ = select.select([sock], [sock], [])
 
             if readable:
                 message = connection.receive()
@@ -92,7 +106,7 @@ class Client(object):
             if writeable:
                 # Write things if we need to
                 while self.message_write_queue:
-                    message = self.message_write_queue.pop()
+                    message = self.message_write_queue.pop(0)
                     connection.send_message(message)
                 connection.write()
 

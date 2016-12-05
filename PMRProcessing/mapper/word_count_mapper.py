@@ -27,7 +27,7 @@ class Mapper(BeatingProcess, PMRJob):
             words = line.split()
             for word in words:
                 self.out_stream.write('%s\t%s\n' % (word, 1))
-                self.progress += 1
+            self.progress += len(line)
 
     def run(self):
         self.progress = 0

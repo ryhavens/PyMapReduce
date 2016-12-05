@@ -18,6 +18,8 @@ class BeatingProcess:
 		self.progress = 0
 		self.start_time = 0
 		self.heartbeat_id = "BeatingProcess" # overridden by child classes
+		self.BeatMethod = self.DefaultBeatMethod
+		self.DieMethod = self.DefaultDieMethod
 
 	def SetHeartbeatInterval(self, heartbeat_interval):
 		self.heartbeat_interval = heartbeat_interval
@@ -34,7 +36,22 @@ class BeatingProcess:
 
 	def EndHeartbeat(self):
 		self.heartbeat.cancel()
+		self.Beat() # beat one last time before dying
+		self.DieMethod() # call die method
+
+	# sets a function to call for writing beat to heartbeat stream
+	def SetBeatMethod(self, method):
+		self.BeatMethod = method
+
+	def SetDieMethod(self, method):
+		self.DieMethod = method
 
 	def Beat(self):
+		self.BeatMethod()
+
+	def DefaultBeatMethod(self):
 		self.heartbeat_stream.write('%s: Processed %d lines at %f lines per second\n' % 
 			(self.heartbeat_id, self.progress, self.progress/(time.time() - self.start_time)))
+
+	def DefaultDieMethod(self):
+		self.heartbeat_stream.write('%s: Alas, I die!' % self.heartbeat_id)

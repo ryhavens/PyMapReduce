@@ -43,7 +43,7 @@ class Reducer(BeatingProcess, PMRJob):
                     self.out_stream.write('%s\t%s\n' % (current_word, current_count))
                 current_word = word
                 current_count = count
-            self.progress += 1
+            self.progress += len(line)+1
 
         if word and word == current_word:
             self.out_stream.write('%s\t%s\n' % (current_word, current_count))
