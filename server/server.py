@@ -160,6 +160,7 @@ class Server(object):
                                 conn.send_message(w_message)
                             self.update_job_distribution()
                     except (ClientDisconnectedException, ConnectionResetError) as e:
+                        conn.return_resources()
                         self.connections_list.remove(s)
 
             for s in writeable:

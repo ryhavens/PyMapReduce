@@ -36,6 +36,18 @@ class WorkerConnection(PMRConnection):
         self.instructions_ackd = False
         self.data_ackd = False
 
+    def return_resources(self):
+        """
+        Called in case of a disconnection
+
+        Should mark any job fragments that were currently
+        in progress as up for grabs again
+        :return:
+        """
+        if self.current_job:
+            self.current_job.client = None
+            self.current_job.pending_assignment = False
+
 
 class ConnectionsList(object):
     """
