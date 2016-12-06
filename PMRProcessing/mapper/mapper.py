@@ -1,17 +1,19 @@
 from PMRJob.job import hashcode
 from PMRProcessing.PMRJob import PMRJob
 from PMRProcessing.heartbeat.heartbeat import *
+import time
 
 
 class Mapper(BeatingProcess, PMRJob):
     """
     @brief Class for mapper.
     """
-    def __init__(self, key, mapper_cls, num_workers, heartbeat_id="Mapper", in_stream=sys.stdin, out_stream=sys.stdout):
+    def __init__(self, key, mapper_cls, num_workers, heartbeat_id="Mapper", in_stream=sys.stdin, out_stream=sys.stdout, slow_mode=False):
         BeatingProcess.__init__(self)
         self.in_stream = in_stream
         self.out_stream = out_stream
         self.heartbeat_id = heartbeat_id
+        self.slow_mode = slow_mode
         self.mapper = mapper_cls()
         self.key = key
         self.num_workers = num_workers
@@ -28,6 +30,8 @@ class Mapper(BeatingProcess, PMRJob):
         """
         output = []
         for line in self.in_stream:
+            if (self.slow_mode):
+                time.sleep(0.1)
             self.mapper.map(self.key, line, output)
             self.progress += len(line)
 
