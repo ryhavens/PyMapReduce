@@ -4,6 +4,8 @@ import select
 from optparse import OptionParser
 import time
 
+from PMRProcessing.mapper.mapper import Mapper
+from PMRProcessing.reducer.reducer import Reducer
 from connection import PMRConnection
 from filesystems import SimpleFileSystem
 from messages import *
@@ -76,8 +78,12 @@ class Client(object):
                     out_path = fs.get_writeable_file_path()
                     with fs.open(out_path, 'w') as out_file:
                         print(instructions_class)
-                        task = instructions_class(in_stream=in_file, out_stream=out_file)
-                        task.SetBeatMethod(lambda: 
+
+                        if self.instructions_type == 'Mapper':
+                            task = Mapper(self.data_path, instructions_class, in_stream=in_file, out_stream=out_file)
+                        elif self.instructions_type == 'Reducer':
+                            task = task = Reducer(instructions_class, in_stream=in_file, out_stream=out_file)
+                        task.SetBeatMethod(lambda:
                             self.message_write_queue.append(JobHeartbeatMessage(
                                 str(task.progress), 
                                 str(task.progress/(time.time() - task.start_time))

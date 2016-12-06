@@ -6,11 +6,13 @@ class Mapper(BeatingProcess, PMRJob):
     """
     @brief Class for mapper.
     """
-    def __init__(self, heartbeat_id="Mapper", in_stream=sys.stdin, out_stream=sys.stdout):
+    def __init__(self, key, mapper_cls, heartbeat_id="Mapper", in_stream=sys.stdin, out_stream=sys.stdout):
         BeatingProcess.__init__(self)
         self.in_stream = in_stream
         self.out_stream = out_stream
         self.heartbeat_id = heartbeat_id
+        self.mapper = mapper_cls()
+        self.key = key
 
     def set_in_stream(self, in_stream):
         self.in_stream = in_stream
@@ -22,12 +24,13 @@ class Mapper(BeatingProcess, PMRJob):
         """
         Simple count map
         """
+        output = []
         for line in self.in_stream:
-            line = line.strip()
-            words = line.split()
-            for word in words:
-                self.out_stream.write('%s\t%s\n' % (word, 1))
+            self.mapper.map(self.key, line, output)
             self.progress += len(line)
+
+        for key, value in output:
+            self.out_stream.write('%s\t%s\n' % (key, value))
 
     def run(self):
         self.progress = 0
