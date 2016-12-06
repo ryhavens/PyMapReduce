@@ -4,6 +4,8 @@ import select
 from optparse import OptionParser
 import time
 
+from PMRProcessing.mapper.mapper import Mapper
+from PMRProcessing.reducer.reducer import Reducer
 from connection import PMRConnection
 from filesystems import SimpleFileSystem
 from messages import *
@@ -26,6 +28,8 @@ class Client(object):
         self.instructions_type = None
         self.data_path = None
         self.slow_mode = slow_mode
+        self.num_workers = None
+        self.partition_num = None
 
     def parse_opts(self):
         parser = OptionParser()
@@ -40,6 +44,8 @@ class Client(object):
         self.instructions_file = None
         self.instructions_type = None
         self.data_path = None
+        self.num_workers = None
+        self.partition_num = None
 
     def do_processing(self):
         if len(self.message_read_queue):
@@ -53,23 +59,35 @@ class Client(object):
             elif message.m_type is MessageTypes.JOB_INSTRUCTIONS_FILE:
                 self.instructions_file = JobInstructionsFileMessage.get_path_from_message(message)
                 self.instructions_type = JobInstructionsFileMessage.get_type_from_message(message)
+                self.num_workers = JobInstructionsFileMessage.get_num_workers_from_message(message)
+                self.partition_num = JobInstructionsFileMessage.get_partition_num_from_message(message)
                 self.message_write_queue.append(JobInstructionsFileAckMessage())
             elif message.m_type is MessageTypes.DATAFILE:
                 self.data_path = message.get_body()
                 self.message_write_queue.append(DataFileAckMessage())
             elif message.m_type is MessageTypes.JOB_START:
                 # Start job
-                pkg = None
-                instructions_class = None
                 pkg = importlib.import_module(self.instructions_file)
                 instructions_class = getattr(pkg, self.instructions_type)
 
                 with open(self.data_path, 'r') as in_file:
                     fs = SimpleFileSystem()
-                    out_path = fs.get_writeable_file_path()
+
+                    if self.instructions_type == 'Mapper':
+                        out_path = fs.get_writeable_file_path()
+                    elif self.instructions_type == 'Reducer':
+                        out_path = fs.get_file_with_name('partition_{}'.format(self.partition_num))
+
                     with fs.open(out_path, 'w') as out_file:
-                        task = instructions_class(in_stream=in_file, out_stream=out_file, slow_mode=self.slow_mode)
-                        task.SetBeatMethod(lambda: 
+                        if self.instructions_type == 'Mapper':
+                            task = Mapper(self.data_path, instructions_class,
+                                          self.num_workers, in_stream=in_file,
+                                          out_stream=out_file, slow_mode=self.slow_mode)
+                        elif self.instructions_type == 'Reducer':
+                            task = Reducer(instructions_class, self.num_workers,
+                                           in_stream=in_file, out_stream=out_file, slow_mode=self.slow_mode)
+
+                        task.SetBeatMethod(lambda:
                             self.message_write_queue.append(JobHeartbeatMessage(
                                 str(task.progress), 
                                 str(task.progress/(time.time() - task.start_time))
@@ -78,7 +96,9 @@ class Client(object):
                             self.message_write_queue.append(JobDoneMessage(out_path)),
                             self.prep_for_new_job()
                             ])
+
                         task.run()
+
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.server_address)
@@ -90,7 +110,7 @@ class Client(object):
             if self.message_write_queue:
                 readable, writeable, _ = select.select([sock], [sock], [])
             else:
-                readable, _, _ = select.select([sock], [], [])
+                readable, writeable, _ = select.select([sock], [], [])
 
             if readable:
                 message = connection.receive()

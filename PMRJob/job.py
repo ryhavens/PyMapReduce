@@ -1,49 +1,91 @@
-from PMRJob.sub_job import fixed_size_partition, SubJob, stitch_data_files, sort_data_file
+import os
+
+from PMRJob.sub_job import chunk_input_data, SubJob, set_result_file
+from filesystems import SimpleFileSystem
 
 
-def prep_job_for_execution(data_path, reducer_name, mapper_name,
-                           pending_jobs, sub_jobs, get_next_job_id):
+def hashcode(s):
     """
-    Given a data_path, mapper_name and reducer_name, prep the job for
-    distributed execution
+    Return the hashcode of a string
 
-    :param data_path: Path to data file
-    :param reducer_name: Path to reducer module
-    :param mapper_name: Path to mapper module
-    :param pending_jobs: server's list of pending jobs
-    :param sub_jobs: server's list of sub_jobs
-    :param get_next_job_id: server's handle for getting next job id
-    :return:
+    https://gist.github.com/hanleybrand/5224673
+    :param s:
+    :return: int
     """
-    partitions = fixed_size_partition(data_path)
+    h = 0
+    for c in s:
+        h = (31 * h + ord(c)) & 0xFFFFFFFF
+    return ((h + 0x80000000) & 0xFFFFFFFF) - 0x80000000
 
-    final_reduce = SubJob(id=get_next_job_id(),
-                          instruction_path=reducer_name,
-                          instruction_type='Reducer',
-                          data_paths_list=[],
-                          num_data_paths_required=len(partitions),
-                          # Stitch files together and sort output before start reducer
-                          do_before=[stitch_data_files, sort_data_file])
 
-    for i in range(len(partitions)):
-        pending_jobs.append(SubJob(
-            id=get_next_job_id(),
-            instruction_path=reducer_name,
-            instruction_type='Reducer',
-            data_paths_list=[],
-            num_data_paths_required=1,
-            # Stitch even though its one file bc stitch also sets the file up for processing
-            do_before=[stitch_data_files, sort_data_file],
-            pass_result_to=final_reduce
-        ))
-
-    pending_jobs.append(final_reduce)
+def setup_mapping_tasks(data_path, mapper_name, num_workers, sub_jobs, get_next_job_id):
+    partitions = chunk_input_data(data_path)
 
     for index, partition_path in enumerate(partitions):
         sub_jobs.append(SubJob(
             id=get_next_job_id(),
             instruction_path=mapper_name,
+            num_workers=num_workers,
             instruction_type='Mapper',
             data_path=partition_path,
-            pass_result_to=pending_jobs[index]
+            do_after=[set_result_file]
         ))
+
+
+def setup_reducing_tasks(reducer_name, num_reducers, sub_jobs, get_next_job_id):
+    sf = SimpleFileSystem()
+
+    # First set up the files correctly
+    # Open num_reducers files
+    paths = []
+    partitions = []
+    for i in range(num_reducers):
+        paths.append(sf.get_writeable_file_path())
+        partitions.append(
+            sf.open(paths[-1], 'w')
+        )
+
+    # For each of the mapped files, move data into the correct partition
+    for job in sub_jobs:
+        if job.instruction_type == 'Mapper':
+            with open(job.result_file, 'r') as rf:
+                for line in rf:
+                    line = line.strip()
+                    key, value = line.split('\t')
+                    partitions[hashcode(key) % num_reducers].write('%s\n' % line)
+
+    # Close partition files
+    for f in partitions:
+        sf.close(f)
+
+    # For each partition, create a reducer job
+    for index, path in enumerate(paths):
+        sub_jobs.append(SubJob(
+            id=get_next_job_id(),
+            instruction_path=reducer_name,
+            num_workers=num_reducers,
+            instruction_type='Reducer',
+            data_path=path,
+            partition_num=index,
+            do_after=[set_result_file]
+        ))
+
+
+def get_job_result_file_path(num_partitions):
+    # For demo and testing purposes, we combine and sort final partitions here.
+    # Note: this negates the distributed advantages so remove for real work
+    sf = SimpleFileSystem()
+    path = sf.get_writeable_file_path()
+    path_sorted = sf.get_writeable_file_path()
+    f = sf.open(path, 'w')
+
+    for i in range(num_partitions):
+        pf = sf.open(sf.get_file_with_name('partition_{}'.format(i)), 'r')
+        f.write(pf.read())
+        pf.close()
+
+    sf.close(f)
+
+    os.system('cat {} | sort -k1,1 > {}'.format(path, path_sorted))
+
+    return path_sorted

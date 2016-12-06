@@ -1,9 +1,11 @@
-import importlib
-import random
-import string
-from messages import *
-from filesystems import SimpleFileSystem
 import time
+import string
+import random
+import importlib
+
+from PMRJob.job import get_job_result_file_path
+from filesystems import SimpleFileSystem
+from messages import *
 
 
 def should_send_job_start(conn):
@@ -43,17 +45,19 @@ def is_valid_file_path(path):
         return False
 
 
-def handle_message(message, connection,
+def handle_message(message, connection, num_partitions=1,
                    initialize_job=None, current_job_connection=None,
+                   job_finished=None,
                    mark_job_as_finished=None):
     """
     Process the messages received from workers and perform
     any necessary operations accordingly
     :param message: The message to handle
     :param connection: The WorkerConnection of this client
+    :param sub_jobs: the sub_jobs list from the server
     :param initialize_job: The server function to set a new job up on command
-    :param 
     :param current_job_connection: the conn that corresponds to overall job submitter
+    :param job_finished: the server function to test whether the overall job is finished
     :param mark_job_as_finished: the server function to prep for new job
     :return: Message list to write to worker
     """
@@ -101,7 +105,8 @@ def handle_message(message, connection,
         job.pending_assignment = False
         connection.data_file = job.data_path
         return [
-            JobInstructionsFileMessage(job.instruction_path, job.instruction_type),
+            JobInstructionsFileMessage(job.instruction_path, job.instruction_type,
+                                       job.num_workers, job.partition_num),
             DataFileMessage(job.data_path)
         ]
 
@@ -128,12 +133,13 @@ def handle_message(message, connection,
 
         # End job
         job = connection.current_job
-        if not job.is_last():
-            job.post_execute(connection.result_file)
-        else:
-            # No jobs depend on this finishing so send back the result
+        job.post_execute(connection.result_file)
+
+        if job_finished():  # Overall job
+            print('Job finished. Returning results to submitter.')
+            result_file = get_job_result_file_path(num_partitions)
             current_job_connection.send_message(
-                SubmittedJobFinishedMessage(connection.result_file)
+                SubmittedJobFinishedMessage(result_file)
             )
 
         # Reset this connection so that it can be assigned a new job

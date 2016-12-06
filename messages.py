@@ -120,8 +120,14 @@ class JobStartAckMessage(Message):
 class JobInstructionsFileMessage(Message):
     separator = ';;'
 
-    def __init__(self, path, type):
-        super().__init__(MessageTypes.JOB_INSTRUCTIONS_FILE, '{path};;{type}'.format(path=path, type=type))
+    def __init__(self, path, type, num_workers, partition_num):
+        super().__init__(MessageTypes.JOB_INSTRUCTIONS_FILE,
+                         '{path};;{type};;{num_workers};;{partition_num}'.format(
+                             path=path,
+                             type=type,
+                             num_workers=num_workers,
+                             partition_num=partition_num
+                         ))
 
     @staticmethod
     def get_path_from_message(message):
@@ -130,6 +136,14 @@ class JobInstructionsFileMessage(Message):
     @staticmethod
     def get_type_from_message(message):
         return message.get_body().split(JobInstructionsFileMessage.separator)[1]
+
+    @staticmethod
+    def get_num_workers_from_message(message):
+        return int(message.get_body().split(JobInstructionsFileMessage.separator)[2])
+
+    @staticmethod
+    def get_partition_num_from_message(message):
+        return int(message.get_body().split(JobInstructionsFileMessage.separator)[3])
 
 
 class JobInstructionsFileAckMessage(Message):

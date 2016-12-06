@@ -22,10 +22,10 @@ def parse_opts():
                       help='host address to bind to', type='string', default='localhost')
     parser.add_option('-m', '--mapper', dest='mapper',
                       help='the mapper package path', type='string',
-                      default='PMRProcessing.mapper.word_count_mapper')
+                      default='PMRProcessing.mapper.word_count')
     parser.add_option('-r', '--reducer', dest='reducer',
                       help='the reducer package path', type='string',
-                      default='PMRProcessing.reducer.word_count_reducer')
+                      default='PMRProcessing.reducer.word_count')
     parser.add_option('-d', '--datafile', dest='datafile',
                       help='the datafile path', type='string', default='brown.txt')
     return parser.parse_args()

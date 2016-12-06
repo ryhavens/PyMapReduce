@@ -33,6 +33,9 @@ class SimpleFileSystem(BaseFilesystem):
         f_name = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(self._file_name_len))
         return '{path}.txt'.format(path=os.path.join(self._fs_base_path, f_name))
 
+    def get_file_with_name(self, name):
+        return '{path}.txt'.format(path=os.path.join(self._fs_base_path, name))
+
     def open(self, path, mode):
         return open(path, mode)
 

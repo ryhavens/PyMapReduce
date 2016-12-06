@@ -1,5 +1,5 @@
-from PMRProcessing.mapper.word_count_mapper import Mapper
-from PMRProcessing.reducer.word_count_reducer import Reducer
+from PMRProcessing.mapper.mapper import Mapper
+from PMRProcessing.reducer.reducer import Reducer
 import os
 
 brown = open('brown.txt','r')
