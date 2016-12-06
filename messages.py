@@ -53,6 +53,9 @@ class MessageTypes(Enum):
     SUBMITTED_JOB_FINISHED = 17  # Server announces completion w/ data path
     SUBMITTED_JOB_FINISHED_ACK = 18  # Commander acks completion
 
+    SUBMIT_JOB_DENIED = 97
+    # [REASON]
+    # Sent from server to commander if the job cannot be executed for REASON
     SERVER_ERROR = 98
     # [SERVER_ERROR][ERROR_CODE]
     # Error can mean a variety of things, it is up to the error handler to interpret the error code
@@ -184,6 +187,11 @@ class SubmitJobMessage(Message):
 class SubmitJobAckMessage(Message):
     def __init__(self):
         super().__init__(MessageTypes.SUBMIT_JOB_ACK)
+
+
+class SubmitJobDeniedMessage(Message):
+    def __init__(self, body):
+        super().__init__(MessageTypes.SUBMIT_JOB_DENIED, body)
 
 
 class SubmittedJobFinishedMessage(Message):

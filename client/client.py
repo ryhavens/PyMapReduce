@@ -60,22 +60,13 @@ class Client(object):
                 # Start job
                 pkg = None
                 instructions_class = None
-                try:
-                    pkg = importlib.import_module(self.instructions_file)
-                except ImportError:
-                    # TODO: Respond with some sort of error so the server knows
-                    print('Error: Could not load instructions module.')
-                try:
-                    instructions_class = getattr(pkg, self.instructions_type)
-                except AttributeError:
-                    # TODO: Respond with some sort of error
-                    print('Error: Module was loaded, but does not contain a "{}" class.'.format(self.instructions_type))
+                pkg = importlib.import_module(self.instructions_file)
+                instructions_class = getattr(pkg, self.instructions_type)
 
                 with open(self.data_path, 'r') as in_file:
                     fs = SimpleFileSystem()
                     out_path = fs.get_writeable_file_path()
                     with fs.open(out_path, 'w') as out_file:
-                        print(instructions_class)
                         task = instructions_class(in_stream=in_file, out_stream=out_file)
                         task.SetBeatMethod(lambda: 
                             self.message_write_queue.append(JobHeartbeatMessage(
@@ -95,7 +86,10 @@ class Client(object):
 
         while True:
             self.do_processing()
-            readable, writeable, _ = select.select([sock], [sock], [])
+            if self.message_write_queue:
+                readable, writeable, _ = select.select([sock], [sock], [])
+            else:
+                readable, _, _ = select.select([sock], [], [])
 
             if readable:
                 message = connection.receive()

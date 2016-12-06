@@ -1,5 +1,6 @@
 from connection import PMRConnection
 from messages import MessageTypes
+import time
 
 
 class WorkerConnection(PMRConnection):
@@ -12,12 +13,18 @@ class WorkerConnection(PMRConnection):
 
         self.instructions_ackd = False
         self.data_ackd = False
+
+        self.byte_processing_rate = -1
+        self.last_heartbeat_ack = -1
+
         super().__init__(file_descriptor, address)
 
     def __str__(self):
-        return '<WorkerConnection: sock={sock} subscribed={subscribed}'.format(
-            sock=self.file_descriptor,
-            subscribed=self.subscribed
+        return '<WorkerConnection: sock={sock} subscribed={subscribed} rate={rate}, last_hb_ack={time}'.format(
+            sock=self.file_descriptor.fileno(), # change back to just file_descriptor to see other details
+            subscribed=self.subscribed,
+            rate=self.byte_processing_rate,
+            time=time.strftime('%H:%M:%S', time.localtime(self.last_heartbeat_ack))
         )
 
     def subscribe(self):
@@ -40,7 +47,6 @@ class WorkerConnection(PMRConnection):
     def return_resources(self):
         """
         Called in case of a disconnection
-
         Should mark any job fragments that were currently
         in progress as up for grabs again
         :return:
@@ -59,7 +65,7 @@ class ConnectionsList(object):
 
     def __str__(self):
         return '<ConnectionsList: [{conn_list}]>'.format(
-            conn_list=','.join([str(c) for c in self.connections])
+            conn_list=',\n\t'.join([str(c) for c in self.connections])
         )
 
     def add(self, connection):
