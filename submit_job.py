@@ -6,7 +6,10 @@ from connection import PMRConnection
 from messages import MessageTypes, SubmitJobMessage, SubmittedJobFinishedMessage, SubmittedJobFinishedAckMessage
 
 """
-A command file for submitting jobs to the server
+A command file for submitting jobs to the
+
+To run the avg query time job:
+python submit_job.py -d queries.txt -m PMRProcessing.mapper.average_query_time -r PMRProcessing.reducer.average_query_time
 """
 
 
