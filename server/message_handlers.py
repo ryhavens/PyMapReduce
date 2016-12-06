@@ -99,6 +99,7 @@ def handle_message(message, connection,
 
         job = connection.current_job
         job.pending_assignment = False
+        connection.data_file = job.data_path
         return [
             JobInstructionsFileMessage(job.instruction_path, job.instruction_type),
             DataFileMessage(job.data_path)
@@ -149,7 +150,7 @@ def handle_message(message, connection,
         rate = JobHeartbeatMessage.get_rate(message)
         print('%s :: %s, %s' % (connection.file_descriptor, progress, rate) )
 
-        connection.byte_processing_rate = rate
+        connection.byte_processing_rate = float(rate)
         connection.last_heartbeat_ack = time.time()
 
         return []

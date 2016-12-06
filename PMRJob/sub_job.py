@@ -8,6 +8,13 @@ def fixed_size_partition(data_path, lines_per_partition=500):
     Create n partitions of 500 lines each
     :return:
     """
+    print('test')
+    print('test')
+    print('test')
+    print('test')
+    print('test')
+    print('test')
+    print('test')
     partition = -1
     partition_paths = []
     partition_handlers = []
@@ -26,7 +33,10 @@ def fixed_size_partition(data_path, lines_per_partition=500):
                 partition_handlers.append(fs.open(partition_paths[partition], 'w'))
 
             partition_handlers[partition].write(line)
+            
+    fs.close(partition_handlers[partition])
 
+    print(partition_paths)
     return partition_paths
 
 
@@ -115,9 +125,9 @@ class SubJob:
         Is this job ready to execute? I.e. is it waiting on data from
         other jobs or not
         :return:
-        """
-        if self.pass_result_to:
-            return True
+        # """
+        # if self.pass_result_to:
+        #     return True
 
         if self.data_paths_list and len(self.data_paths_list) == self.num_data_paths_required:
             return True

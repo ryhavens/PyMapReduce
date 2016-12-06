@@ -90,7 +90,7 @@ class Server(object):
         Assign jobs in sub_jobs to clients
         :return:
         """
-        # self.update_client_performance_statistics()
+        self.update_client_performance_statistics()
         pending_jobs_to_pop = []
         for job in self.pending_jobs:
             if job.is_ready_to_execute():
@@ -119,8 +119,7 @@ class Server(object):
 
     def update_client_performance_statistics(self):
         if (self.job_started):
-            self.connections_list = sorted(self.connections_list, 
-                key=lambda conn: conn.byte_processing_rate, reverse=True)
+            self.connections_list.sort(key_func=lambda conn: conn.byte_processing_rate, reverse_opt=True)
 
     def initialize_job(self, submitter, mapper_name, reducer_name, data_file_path):
         """
@@ -195,8 +194,6 @@ class Server(object):
                 time.sleep(.5)
             if self.show_info_pane:
                 self.update_interface()
-            else:
-                print(self.connections_list)
             read_list = [self.sock]
             read_list += self.connections_list.get_read_set()
             write_list = self.connections_list.get_write_set()
@@ -223,6 +220,8 @@ class Server(object):
                                 w_message = to_write.pop()
                                 conn.send_message(w_message)
                             self.update_job_distribution()
+                            print(message)
+                            print(self.connections_list)
                     except (ClientDisconnectedException, ConnectionResetError) as e:
                         conn.return_resources()
                         self.connections_list.remove(s)
