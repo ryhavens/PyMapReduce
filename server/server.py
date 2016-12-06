@@ -96,6 +96,7 @@ class Server(object):
         Assign jobs in sub_jobs to clients
         :return:
         """
+        self.update_client_performance_statistics()
         remaining_map_jobs = [j for j in self.sub_jobs if j.instruction_type == 'Mapper' and not j.result_file]
 
         if self.mapping and not remaining_map_jobs:
@@ -115,6 +116,10 @@ class Server(object):
                 job.pending_assignment = True
                 conn.current_job = job
                 conn.send_message(JobReadyMessage(str(job.id)))
+
+    def update_client_performance_statistics(self):
+        if (self.job_started):
+            self.connections_list.sort(key_func=lambda conn: conn.byte_processing_rate, reverse_opt=True)
 
     def initialize_job(self, submitter, mapper_name, reducer_name, data_file_path):
         """
@@ -228,6 +233,7 @@ class Server(object):
                                                       current_job_connection=self.job_submitter_connection,
                                                       job_finished=self.job_finished,
                                                       mark_job_as_finished=self.mark_job_as_finished)
+
                             while to_write:
                                 w_message = to_write.pop()
                                 conn.send_message(w_message)

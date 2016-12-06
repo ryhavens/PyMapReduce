@@ -27,6 +27,8 @@ def chunk_input_data(data_path, lines_per_partition=500):
 
             partition_handlers[partition].write(line)
 
+    fs.close(partition_handlers[partition])
+
     return partition_paths
 
 

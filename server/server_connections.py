@@ -1,5 +1,6 @@
 from connection import PMRConnection
 from messages import MessageTypes
+import time
 
 
 class WorkerConnection(PMRConnection):
@@ -12,12 +13,24 @@ class WorkerConnection(PMRConnection):
 
         self.instructions_ackd = False
         self.data_ackd = False
+
+        self.byte_processing_rate = -1
+        self.last_heartbeat_ack = -1
+
+        self.result_file = None
+        self.data_file = None
+
         super().__init__(file_descriptor, address)
 
     def __str__(self):
-        return '<WorkerConnection: sock={sock} subscribed={subscribed}'.format(
-            sock=self.file_descriptor,
-            subscribed=self.subscribed
+        return '<WorkerConnection: sock={sock} subscribed={subscribed} current_job={job} rate={rate} last_hb_ack={time} data_file={data_file} result_file={result_file}'.format(
+            sock=self.file_descriptor.fileno(), # change back to just file_descriptor to see other details
+            subscribed=self.subscribed,
+            job=self.current_job and self.current_job.id,
+            rate=self.byte_processing_rate,
+            time=time.strftime('%H:%M:%S', time.localtime(self.last_heartbeat_ack)),
+            data_file = self.data_file,
+            result_file=self.result_file
         )
 
     def subscribe(self):
@@ -36,11 +49,12 @@ class WorkerConnection(PMRConnection):
         self.current_job = None
         self.instructions_ackd = False
         self.data_ackd = False
+        self.data_file = None
+        self.result_file = None
 
     def return_resources(self):
         """
         Called in case of a disconnection
-
         Should mark any job fragments that were currently
         in progress as up for grabs again
         :return:
@@ -59,7 +73,7 @@ class ConnectionsList(object):
 
     def __str__(self):
         return '<ConnectionsList: [{conn_list}]>'.format(
-            conn_list=','.join([str(c) for c in self.connections])
+            conn_list=',\n\t'.join([str(c) for c in self.connections])
         )
 
     def add(self, connection):
@@ -92,3 +106,6 @@ class ConnectionsList(object):
 
     def pop(self):
         return self.connections.pop()
+
+    def sort(self, key_func=lambda x: x, reverse_opt=True):
+        self.connections = sorted(self.connections, key=key_func, reverse=reverse_opt)
