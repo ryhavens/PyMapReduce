@@ -18,13 +18,14 @@ class Client(object):
     ]
     message_read_queue = []
 
-    def __init__(self):
+    def __init__(self, slow_mode=False):
         options, args = self.parse_opts()
         self.server_address = (options.host, options.port)
         self.has_job = False
         self.instructions_file = None
         self.instructions_type = None
         self.data_path = None
+        self.slow_mode = slow_mode
 
     def parse_opts(self):
         parser = OptionParser()
@@ -67,7 +68,7 @@ class Client(object):
                     fs = SimpleFileSystem()
                     out_path = fs.get_writeable_file_path()
                     with fs.open(out_path, 'w') as out_file:
-                        task = instructions_class(in_stream=in_file, out_stream=out_file)
+                        task = instructions_class(in_stream=in_file, out_stream=out_file, slow_mode=self.slow_mode)
                         task.SetBeatMethod(lambda: 
                             self.message_write_queue.append(JobHeartbeatMessage(
                                 str(task.progress), 

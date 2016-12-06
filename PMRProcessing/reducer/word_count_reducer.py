@@ -1,16 +1,21 @@
 from PMRProcessing.PMRJob import PMRJob
 from PMRProcessing.heartbeat.heartbeat import *
+import time
 
 
 class Reducer(BeatingProcess, PMRJob):
     """
     @brief Class for reducer.
     """
-    def __init__(self, heartbeat_id="Reducer", in_stream=sys.stdin, out_stream=sys.stdout):
+    def __init__(self, heartbeat_id="Reducer", 
+                       in_stream=sys.stdin, 
+                       out_stream=sys.stdout,
+                       slow_mode=False):
         BeatingProcess.__init__(self)
         self.in_stream = in_stream
         self.out_stream = out_stream
         self.heartbeat_id = heartbeat_id
+        self.slow_mode = slow_mode
 
     def set_in_stream(self, in_stream):
         self.in_stream = in_stream
@@ -30,6 +35,9 @@ class Reducer(BeatingProcess, PMRJob):
         for line in self.in_stream:
             line = line.strip()
             word, count = line.split('\t')
+
+            if (self.slow_mode):
+                time.sleep(0.1)
 
             try:
                 count = int(count)
