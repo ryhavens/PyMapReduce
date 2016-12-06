@@ -27,6 +27,8 @@ class Client(object):
         self.instructions_file = None
         self.instructions_type = None
         self.data_path = None
+        self.num_workers = None
+        self.partition_num = None
 
     def parse_opts(self):
         parser = OptionParser()
@@ -41,6 +43,8 @@ class Client(object):
         self.instructions_file = None
         self.instructions_type = None
         self.data_path = None
+        self.num_workers = None
+        self.partition_num = None
 
     def do_processing(self):
         if len(self.message_read_queue):
@@ -54,6 +58,8 @@ class Client(object):
             elif message.m_type is MessageTypes.JOB_INSTRUCTIONS_FILE:
                 self.instructions_file = JobInstructionsFileMessage.get_path_from_message(message)
                 self.instructions_type = JobInstructionsFileMessage.get_type_from_message(message)
+                self.num_workers = JobInstructionsFileMessage.get_num_workers_from_message(message)
+                self.partition_num = JobInstructionsFileMessage.get_partition_num_from_message(message)
                 self.message_write_queue.append(JobInstructionsFileAckMessage())
             elif message.m_type is MessageTypes.DATAFILE:
                 self.data_path = message.get_body()
@@ -75,14 +81,21 @@ class Client(object):
 
                 with open(self.data_path, 'r') as in_file:
                     fs = SimpleFileSystem()
-                    out_path = fs.get_writeable_file_path()
-                    with fs.open(out_path, 'w') as out_file:
-                        print(instructions_class)
 
+                    if self.instructions_type == 'Mapper':
+                        out_path = fs.get_writeable_file_path()
+                    elif self.instructions_type == 'Reducer':
+                        out_path = fs.get_file_with_name('partition_{}'.format(self.partition_num))
+
+                    with fs.open(out_path, 'w') as out_file:
                         if self.instructions_type == 'Mapper':
-                            task = Mapper(self.data_path, instructions_class, in_stream=in_file, out_stream=out_file)
+                            task = Mapper(self.data_path, instructions_class,
+                                          self.num_workers, in_stream=in_file,
+                                          out_stream=out_file)
                         elif self.instructions_type == 'Reducer':
-                            task = task = Reducer(instructions_class, in_stream=in_file, out_stream=out_file)
+                            task = Reducer(instructions_class, self.num_workers,
+                                           in_stream=in_file, out_stream=out_file)
+
                         task.SetBeatMethod(lambda:
                             self.message_write_queue.append(JobHeartbeatMessage(
                                 str(task.progress), 
@@ -92,7 +105,9 @@ class Client(object):
                             self.message_write_queue.append(JobDoneMessage(out_path)),
                             self.prep_for_new_job()
                             ])
+
                         task.run()
+
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.server_address)

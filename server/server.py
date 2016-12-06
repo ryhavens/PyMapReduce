@@ -4,7 +4,7 @@ import socket
 import select
 from optparse import OptionParser
 
-from PMRJob.job import prep_job_for_execution
+from PMRJob.job import setup_mapping_tasks, setup_reducing_tasks
 from connection import ClientDisconnectedException
 from messages import JobReadyMessage
 from .server_connections import WorkerConnection, ConnectionsList
@@ -28,6 +28,12 @@ class Server(object):
         self.connections_list = ConnectionsList()
 
         self.job_started = False
+        self.mapping = False
+        self.reducing = False
+        self.mapper_name = None
+        self.reducer_name = None
+        self.num_partitions = 1
+
         self.job_submitter_connection = None  # The conn that submitted the current job
         self.sub_jobs = list()  # Jobs to be executed at next opportunity
         self.pending_jobs = list()  # Jobs that are blocked by something in sub_jobs
@@ -90,17 +96,12 @@ class Server(object):
         Assign jobs in sub_jobs to clients
         :return:
         """
-        pending_jobs_to_pop = []
-        for job in self.pending_jobs:
-            if job.is_ready_to_execute():
-                self.sub_jobs.append(job)
-                pending_jobs_to_pop.append(job)
+        remaining_map_jobs = [j for j in self.sub_jobs if j.instruction_type == 'Mapper' and not j.result_file]
 
-        for job in pending_jobs_to_pop:
-            for index, p_job in enumerate(self.pending_jobs):
-                if p_job == job:
-                    self.pending_jobs.pop(index)
-                    break
+        if self.mapping and not remaining_map_jobs:
+            self.mapping = False
+            self.reducing = True
+            setup_reducing_tasks(self.reducer_name, self.num_partitions, self.sub_jobs, self.get_next_job_id)
 
         # Find clients that can do the job for us
         # Aka clients who are subscribed and don't have a job id
@@ -122,12 +123,23 @@ class Server(object):
         """
         self.job_submitter_connection = submitter
         self.job_started = True
-        prep_job_for_execution(data_path=data_file_path,
-                               reducer_name=reducer_name,
-                               mapper_name=mapper_name,
-                               pending_jobs=self.pending_jobs,
-                               sub_jobs=self.sub_jobs,
-                               get_next_job_id=self.get_next_job_id)
+        self.mapping = True
+        self.mapper_name = mapper_name
+        self.reducer_name = reducer_name
+        self.num_partitions = len([c for c in self.connections_list.connections if c.subscribed])
+
+        setup_mapping_tasks(data_file_path, mapper_name, self.num_partitions, self.sub_jobs, self.get_next_job_id)
+
+    def job_finished(self):
+        """
+        Return whether the job is finished
+        Aka is it in reducing mode w/ all jobs completed
+        :return:s
+        """
+        if self.reducing:
+            remaining_jobs = [j for j in self.sub_jobs if not j.result_file]
+            return not remaining_jobs
+        return False
 
     def mark_job_as_finished(self):
         """
@@ -136,7 +148,12 @@ class Server(object):
         :return:
         """
         self.job_started = False
+        self.mapping = False
+        self.reducing = False
+        self.mapper_name = None
+        self.reducer_name = None
         self.job_submitter_connection = None
+        self.num_partitions = 1
 
     def update_interface(self):
         """
@@ -206,8 +223,10 @@ class Server(object):
                         message = conn.receive()
                         if message:
                             to_write = handle_message(message, conn,
+                                                      num_partitions=self.num_partitions,
                                                       initialize_job=self.initialize_job,
                                                       current_job_connection=self.job_submitter_connection,
+                                                      job_finished=self.job_finished,
                                                       mark_job_as_finished=self.mark_job_as_finished)
                             while to_write:
                                 w_message = to_write.pop()

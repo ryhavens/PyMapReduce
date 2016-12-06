@@ -1,3 +1,4 @@
+from PMRJob.job import hashcode
 from PMRProcessing.PMRJob import PMRJob
 from PMRProcessing.heartbeat.heartbeat import *
 
@@ -6,12 +7,13 @@ class Reducer(BeatingProcess, PMRJob):
     """
     @brief Class for reducer.
     """
-    def __init__(self, reducer_cls, heartbeat_id="Reducer", in_stream=sys.stdin, out_stream=sys.stdout):
+    def __init__(self, reducer_cls, num_workers, heartbeat_id="Reducer", in_stream=sys.stdin, out_stream=sys.stdout):
         BeatingProcess.__init__(self)
         self.in_stream = in_stream
         self.out_stream = out_stream
         self.heartbeat_id = heartbeat_id
         self.reducer_cls = reducer_cls
+        self.num_workers = num_workers
 
     def set_in_stream(self, in_stream):
         self.in_stream = in_stream
@@ -32,7 +34,7 @@ class Reducer(BeatingProcess, PMRJob):
                 key_vals_map[key] = [value]
 
         output = []
-        for key, values in key_vals_map.items():
+        for key, values in sorted(key_vals_map.items(), key=lambda pair: (hashcode(pair[0]) % self.num_workers, pair[0])):
             reducer = self.reducer_cls()
             reducer.reduce(key, values, output)
 
