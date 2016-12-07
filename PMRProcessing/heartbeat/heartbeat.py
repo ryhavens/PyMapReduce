@@ -34,9 +34,10 @@ class BeatingProcess:
 		self.heartbeat = Heartbeat(self.heartbeat_interval, self.Beat)
 		self.heartbeat.start()
 
-	def EndHeartbeat(self):
+	def EndHeartbeat(self, immediate=False):
 		self.heartbeat.cancel()
-		self.Beat() # beat one last time before dying
+		if (not immediate):
+			self.Beat() # beat one last time before dying
 		self.DieMethod() # call die method
 
 	# sets a function to call for writing beat to heartbeat stream

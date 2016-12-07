@@ -30,8 +30,11 @@ class Mapper(BeatingProcess, PMRJob):
         """
         output = []
         for line in self.in_stream:
+            # can set this higher or lower for slower speeds
+            # this value makes speeds ~10 times slower
             if (self.slow_mode):
-                time.sleep(0.1)
+                for i in range(1000):
+                    continue
             self.mapper.map(self.key, line, output)
             self.progress += len(line)
 
@@ -44,6 +47,10 @@ class Mapper(BeatingProcess, PMRJob):
 
         # Spill to disk
         for key, value in output:
+            if (self.slow_mode):
+                for i in range(1000):
+                    continue
+            self.progress += len(line)
             self.out_stream.write('%s\t%s\n' % (key, value))
 
     def run(self):

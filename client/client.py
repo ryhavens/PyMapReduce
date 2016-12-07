@@ -30,6 +30,7 @@ class Client(object):
         self.slow_mode = slow_mode
         self.num_workers = None
         self.partition_num = None
+        self.connection = None
 
     def parse_opts(self):
         parser = OptionParser()
@@ -78,21 +79,32 @@ class Client(object):
                     elif self.instructions_type == 'Reducer':
                         out_path = fs.get_file_with_name('partition_{}'.format(self.partition_num))
 
+                    # open out_file for writing
                     with fs.open(out_path, 'w') as out_file:
                         if self.instructions_type == 'Mapper':
+                            # pass instruction class to mapper
                             task = Mapper(self.data_path, instructions_class,
                                           self.num_workers, in_stream=in_file,
                                           out_stream=out_file, slow_mode=self.slow_mode)
                         elif self.instructions_type == 'Reducer':
+                            # pass instruction class to reducer
                             task = Reducer(instructions_class, self.num_workers,
                                            in_stream=in_file, out_stream=out_file, slow_mode=self.slow_mode)
 
-                        task.SetBeatMethod(lambda:
-                            self.message_write_queue.append(JobHeartbeatMessage(
+                        # beat method will send status reports to the server
+                        # on a separate thread to avoid blocking during the
+                        # actual map/reduce
+                        task.SetBeatMethod(lambda: [
+                            self.connection.send_message(JobHeartbeatMessage(
                                 str(task.progress), 
                                 str(task.progress/(time.time() - task.start_time))
-                            )))
+                            )),
+                            self.connection.write(),
+                            ])
+                        # completion actions upon finishing map/reduce steps
+                        # this doesn't actually have to be on a different thread 
                         task.SetDieMethod(lambda: [
+                            out_file.close(),
                             self.message_write_queue.append(JobDoneMessage(out_path)),
                             self.prep_for_new_job()
                             ])
@@ -103,7 +115,9 @@ class Client(object):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.server_address)
 
-        connection = PMRConnection(sock)
+        # setting this as an object variable so that it can be accessed from the
+        # threaded calls
+        self.connection = PMRConnection(sock)
 
         while True:
             self.do_processing()
@@ -113,7 +127,7 @@ class Client(object):
                 readable, writeable, _ = select.select([sock], [], [])
 
             if readable:
-                message = connection.receive()
+                message = self.connection.receive()
                 if message:
                     # print(message)
                     self.message_read_queue.append(message)
@@ -122,6 +136,6 @@ class Client(object):
                 # Write things if we need to
                 while self.message_write_queue:
                     message = self.message_write_queue.pop(0)
-                    connection.send_message(message)
-                connection.write()
+                    self.connection.send_message(message)
+                self.connection.write()
 

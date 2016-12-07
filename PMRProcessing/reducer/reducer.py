@@ -13,9 +13,9 @@ class Reducer(BeatingProcess, PMRJob):
         self.in_stream = in_stream
         self.out_stream = out_stream
         self.heartbeat_id = heartbeat_id
+        self.slow_mode = slow_mode
         self.reducer_cls = reducer_cls
         self.num_workers = num_workers
-        self.slow_mode = slow_mode
 
     def set_in_stream(self, in_stream):
         self.in_stream = in_stream
@@ -24,26 +24,33 @@ class Reducer(BeatingProcess, PMRJob):
         self.out_stream = out_stream
 
     def reduce(self):
-        # TODO: Re-add heartbeat
         key_vals_map = {}
         for line in self.in_stream:
             line = line.strip()
             key, value = line.split('\t')
-
+            
             if (self.slow_mode):
-                time.sleep(0.1)
+                for i in range(1000):
+                    continue
 
             if key in key_vals_map:
                 key_vals_map[key].append(value)
             else:
                 key_vals_map[key] = [value]
 
+            self.progress += len(line)
+
         output = []
-        for key, values in sorted(key_vals_map.items(), key=lambda pair: (hashcode(pair[0]) % self.num_workers, pair[0])):
+        for key, value in sorted(key_vals_map.items(), key=lambda pair: (hashcode(pair[0]) % self.num_workers, pair[0])):
             reducer = self.reducer_cls()
-            reducer.reduce(key, values, output)
+            reducer.reduce(key, value, output)
+            self.progress += len(key)
 
         for key, value in output:
+            if (self.slow_mode):
+                for i in range(1000):
+                    continue
+            self.progress += len(key)
             self.out_stream.write('%s\t%s\n' % (key, value))
 
     def run(self):

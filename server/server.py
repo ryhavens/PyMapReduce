@@ -119,6 +119,7 @@ class Server(object):
                 conn.current_job = job
                 conn.send_message(JobReadyMessage(str(job.id)))
 
+    # sort clients by their estimated processing rate
     def update_client_performance_statistics(self):
         if (self.job_started):
             self.connections_list.sort(key_func=lambda conn: conn.byte_processing_rate, reverse_opt=True)
@@ -135,6 +136,7 @@ class Server(object):
         self.reducer_name = reducer_name
         self.num_partitions = len([c for c in self.connections_list.connections if c.subscribed])
         
+        # monitor utilization of worker resources during job
         self.begin_monitor_job_efficiency()
 
         setup_mapping_tasks(data_file_path, mapper_name, self.num_partitions, self.sub_jobs, self.get_next_job_id)
@@ -220,7 +222,8 @@ class Server(object):
             write_list = self.connections_list.get_write_set()
 
             readable, writeable, _ = select.select(read_list, write_list, [])
-
+            if (self.job_started):
+                print (self.connections_list)
             for s in readable:
                 if s == self.sock:
                     connection, client_address = self.sock.accept()
@@ -254,30 +257,35 @@ class Server(object):
                         conn.write()
                     except Exception as e:
                         # TODO: What exceptions can happen here? Should we resend?
-                        print(e)
+                        # print(e)
+                        pass
 
     def get_next_job_id(self):
         self.job_id += 1
         return self.job_id
 
+    # returns proportion of workers running compared to workers available
     def get_efficiency(self):
         n_working = 0
         n_subscribed = 0
         for conn in self.connections_list.connections:
-            if (conn.subscribed):
+            if (conn.subscribed == True):
                 n_subscribed += 1
-                if (conn.current_job):
+                if (conn.current_job is not None):
                     n_working += 1
 
         if (n_subscribed == 0):
             return 0.0
         return n_working/float(n_subscribed)
 
+    # called at the end of the job to determine overall efficiency
     def log_efficiency(self):
         print('Start time: %s' % (time.strftime('%H:%M:%S', time.localtime(self.monitor_stats['start_time']))))
         print('End time: %s' % (time.strftime('%H:%M:%S', time.localtime())))
         print('Average worker utilization: %s' % (str(100*self.monitor_stats['avg_efficiency'])))
 
+    # begin monitoring efficiency at the start of a job
+    # uses a BeatingProcess to allow the efficiency to be updated concurrently
     def begin_monitor_job_efficiency(self):
         self.monitor_interval = 0.1
         self.monitor = BeatingProcess(heartbeat_interval=self.monitor_interval)
@@ -292,7 +300,9 @@ class Server(object):
     def end_monitor_job_efficiency(self):
         self.monitor.EndHeartbeat()
             
+    # function called from the server's BeatingProcess thread
     def update_avg_efficiency(self):
+        # updates average efficiency as a weighted average
         self.monitor_stats['avg_efficiency'] = \
             (self.get_efficiency() * self.monitor_interval + \
             self.monitor_stats['avg_efficiency'] * (time.time() - self.monitor_stats['start_time'])) / \

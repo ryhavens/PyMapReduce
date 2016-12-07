@@ -21,7 +21,7 @@ def main():
     """
     processes = []
 
-    for i in range(NUM_CLIENTS):
+    for i in range(NUM_CLIENTS-1):
         p = Process(target=spawn_slow_client)
         p.start()
         processes.append(p)

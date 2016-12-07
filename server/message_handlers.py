@@ -62,6 +62,7 @@ def handle_message(message, connection, num_partitions=1,
     :return: Message list to write to worker
     """
     connection.prev_message = message.m_type
+    print(message)
 
     if message.is_type(MessageTypes.SUBMIT_JOB):
         # TODO: Check if we can accept this job. Return error if not.
@@ -154,7 +155,6 @@ def handle_message(message, connection, num_partitions=1,
         # TODO use heartbeat rate to keep track of most efficient clients
         progress = JobHeartbeatMessage.get_progress(message)
         rate = JobHeartbeatMessage.get_rate(message)
-        print('%s :: %s, %s' % (connection.file_descriptor, progress, rate) )
 
         connection.byte_processing_rate = float(rate)
         connection.last_heartbeat_ack = time.time()
