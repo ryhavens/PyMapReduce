@@ -46,16 +46,11 @@ def chunk_input_data_by_size_and_workers(data_path, n_workers):
     # round up since rounding down can cause more chunks than workers (very bad)
     chunk_size = ceil(file_size / (1.0*n_workers))
 
-    print(data_path)
-    print(file_size)
-    print(chunk_size)
-
     fs = SimpleFileSystem()
     bytes_chunked = inf # immediately create partition
     with fs.open(data_path, 'r') as f:
         for line in f:
             if bytes_chunked >= chunk_size:
-                print("hello?")
                 # Clean up open descriptor
                 if partition_handlers:
                     fs.close(partition_handlers[partition])
@@ -69,11 +64,9 @@ def chunk_input_data_by_size_and_workers(data_path, n_workers):
 
             partition_handlers[partition].write(line)
             bytes_chunked += len(line) # assuming char is 1 byte (hopefully a safe assumption)
-            print(bytes_chunked)
 
     fs.close(partition_handlers[partition])
 
-    print (partition_paths)
     return partition_paths 
 
 

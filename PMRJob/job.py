@@ -20,7 +20,6 @@ def hashcode(s):
 
 def setup_mapping_tasks(data_path, mapper_name, num_workers, sub_jobs, get_next_job_id):
     # partitions = chunk_input_data(data_path)
-    print(num_workers)
     partitions = chunk_input_data_by_size_and_workers(data_path, num_workers)
 
     for index, partition_path in enumerate(partitions):
