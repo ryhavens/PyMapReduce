@@ -10,6 +10,8 @@ from messages import JobReadyMessage
 from .server_connections import WorkerConnection, ConnectionsList
 from .message_handlers import handle_message
 
+from PMRProcessing.heartbeat.heartbeat import *
+
 
 class Server(object):
     _PORT = '8888'
@@ -132,6 +134,8 @@ class Server(object):
         self.mapper_name = mapper_name
         self.reducer_name = reducer_name
         self.num_partitions = len([c for c in self.connections_list.connections if c.subscribed])
+        
+        self.begin_monitor_job_efficiency()
 
         setup_mapping_tasks(data_file_path, mapper_name, self.num_partitions, self.sub_jobs, self.get_next_job_id)
 
@@ -159,6 +163,7 @@ class Server(object):
         self.reducer_name = None
         self.job_submitter_connection = None
         self.num_partitions = 1
+        self.end_monitor_job_efficiency()
 
     def update_interface(self):
         """
@@ -254,3 +259,44 @@ class Server(object):
     def get_next_job_id(self):
         self.job_id += 1
         return self.job_id
+
+    def get_efficiency(self):
+        n_working = 0
+        n_subscribed = 0
+        for conn in self.connections_list.connections:
+            if (conn.subscribed):
+                n_subscribed += 1
+                if (conn.current_job):
+                    n_working += 1
+
+        if (n_subscribed == 0):
+            return 0.0
+        return n_working/float(n_subscribed)
+
+    def log_efficiency(self):
+        print('Start time: %s' % (time.strftime('%H:%M:%S', time.localtime(self.monitor_stats['start_time']))))
+        print('End time: %s' % (time.strftime('%H:%M:%S', time.localtime())))
+        print('Average worker utilization: %s' % (str(100*self.monitor_stats['avg_efficiency'])))
+
+    def begin_monitor_job_efficiency(self):
+        self.monitor_interval = 0.1
+        self.monitor = BeatingProcess(heartbeat_interval=self.monitor_interval)
+        self.monitor.SetHeartbeatID('Job')
+        self.monitor_stats = dict()
+        self.monitor_stats['start_time'] = time.time()
+        self.monitor_stats['avg_efficiency'] = 0
+        self.monitor.SetBeatMethod(self.update_avg_efficiency)
+        self.monitor.SetDieMethod(self.log_efficiency)
+        self.monitor.BeginHeartbeat()
+
+    def end_monitor_job_efficiency(self):
+        self.monitor.EndHeartbeat()
+            
+    def update_avg_efficiency(self):
+        self.monitor_stats['avg_efficiency'] = \
+            (self.get_efficiency() * self.monitor_interval + \
+            self.monitor_stats['avg_efficiency'] * (time.time() - self.monitor_stats['start_time'])) / \
+            (self.monitor_interval + time.time() - self.monitor_stats['start_time'])
+
+
+
