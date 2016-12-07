@@ -77,6 +77,8 @@ class SubJob:
         self.client = None
         self.pending_assignment = True
 
+        self.done = False
+
     def pre_execute(self):
         """
         Run any do_before methods that were specified
@@ -97,6 +99,7 @@ class SubJob:
         :param output_path:
         :return:
         """
+        self.done = True
         if type(self.do_after) is list:
             for action in self.do_after:
                 action(self, output_path)

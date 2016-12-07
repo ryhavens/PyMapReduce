@@ -167,8 +167,8 @@ class JobStartMessage(Message):
 
 
 class JobDoneMessage(Message):
-    def __init__(self, path):
-        super().__init__(MessageTypes.JOB_DONE, path)
+    def __init__(self):
+        super().__init__(MessageTypes.JOB_DONE)
 
 
 class JobDoneAckMessage(Message):
@@ -209,12 +209,8 @@ class SubmitJobDeniedMessage(Message):
 
 
 class SubmittedJobFinishedMessage(Message):
-    def __init__(self, data_file_path):
-        super().__init__(MessageTypes.SUBMITTED_JOB_FINISHED, body=data_file_path)
-
-    @staticmethod
-    def get_data_file_path(message):
-        return message.get_body()
+    def __init__(self):
+        super().__init__(MessageTypes.SUBMITTED_JOB_FINISHED)
 
 
 class SubmittedJobFinishedAckMessage(Message):

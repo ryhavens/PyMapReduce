@@ -68,48 +68,45 @@ class Client(object):
                 self.message_write_queue.append(DataFileAckMessage())
             elif message.m_type is MessageTypes.JOB_START:
                 # Start job
+                fs = SimpleFileSystem()
+
                 pkg = importlib.import_module(self.instructions_file)
                 instructions_class = getattr(pkg, self.instructions_type)
 
-                with open(self.data_path, 'r') as in_file:
-                    fs = SimpleFileSystem()
+                in_file = None
+                if self.data_path:
+                    in_file = fs.open(self.data_path, 'r')
 
-                    if self.instructions_type == 'Mapper':
-                        out_path = fs.get_writeable_file_path()
-                    elif self.instructions_type == 'Reducer':
-                        out_path = fs.get_file_with_name('partition_{}'.format(self.partition_num))
+                if self.instructions_type == 'Mapper':
+                    # pass instruction class to mapper
+                    task = Mapper(self.data_path, instructions_class,
+                                  self.num_workers, in_stream=in_file, slow_mode=self.slow_mode)
+                elif self.instructions_type == 'Reducer':
+                    # pass instruction class to reducer
+                    task = Reducer(instructions_class, self.num_workers, self.partition_num,
+                                   slow_mode=self.slow_mode)
 
-                    # open out_file for writing
-                    with fs.open(out_path, 'w') as out_file:
-                        if self.instructions_type == 'Mapper':
-                            # pass instruction class to mapper
-                            task = Mapper(self.data_path, instructions_class,
-                                          self.num_workers, in_stream=in_file,
-                                          out_stream=out_file, slow_mode=self.slow_mode)
-                        elif self.instructions_type == 'Reducer':
-                            # pass instruction class to reducer
-                            task = Reducer(instructions_class, self.num_workers,
-                                           in_stream=in_file, out_stream=out_file, slow_mode=self.slow_mode)
+                # beat method will send status reports to the server
+                # on a separate thread to avoid blocking during the
+                # actual map/reduce
+                task.SetBeatMethod(lambda: [
+                    self.connection.send_message(JobHeartbeatMessage(
+                        str(task.progress), 
+                        str(task.progress/(time.time() - task.start_time))
+                    )),
+                    self.connection.write(),
+                    ])
+                # completion actions upon finishing map/reduce steps
+                # this doesn't actually have to be on a different thread 
+                task.SetDieMethod(lambda: [
+                    self.message_write_queue.append(JobDoneMessage()),
+                    self.prep_for_new_job()
+                    ])
 
-                        # beat method will send status reports to the server
-                        # on a separate thread to avoid blocking during the
-                        # actual map/reduce
-                        task.SetBeatMethod(lambda: [
-                            self.connection.send_message(JobHeartbeatMessage(
-                                str(task.progress), 
-                                str(task.progress/(time.time() - task.start_time))
-                            )),
-                            self.connection.write(),
-                            ])
-                        # completion actions upon finishing map/reduce steps
-                        # this doesn't actually have to be on a different thread 
-                        task.SetDieMethod(lambda: [
-                            out_file.close(),
-                            self.message_write_queue.append(JobDoneMessage(out_path)),
-                            self.prep_for_new_job()
-                            ])
+                task.run()
 
-                        task.run()
+                if in_file:
+                    fs.close(in_file)
 
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

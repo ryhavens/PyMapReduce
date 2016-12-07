@@ -6,6 +6,7 @@ from optparse import OptionParser
 
 from PMRJob.job import setup_mapping_tasks, setup_reducing_tasks
 from connection import ClientDisconnectedException
+from filesystems import SimpleFileSystem
 from messages import JobReadyMessage
 from .server_connections import WorkerConnection, ConnectionsList
 from .message_handlers import handle_message
@@ -99,7 +100,7 @@ class Server(object):
         :return:
         """
         self.update_client_performance_statistics()
-        remaining_map_jobs = [j for j in self.sub_jobs if j.instruction_type == 'Mapper' and not j.result_file]
+        remaining_map_jobs = [j for j in self.sub_jobs if j.instruction_type == 'Mapper' and not j.done]
 
         if self.mapping and not remaining_map_jobs:
             self.mapping = False
@@ -139,6 +140,7 @@ class Server(object):
         # monitor utilization of worker resources during job
         self.begin_monitor_job_efficiency()
 
+        SimpleFileSystem().clean_directories()
         setup_mapping_tasks(data_file_path, mapper_name, self.num_partitions, self.sub_jobs, self.get_next_job_id)
 
     def job_finished(self):
@@ -148,7 +150,7 @@ class Server(object):
         :return:s
         """
         if self.reducing:
-            remaining_jobs = [j for j in self.sub_jobs if not j.result_file]
+            remaining_jobs = [j for j in self.sub_jobs if not j.done]
             return not remaining_jobs
         return False
 
