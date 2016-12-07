@@ -20,6 +20,8 @@ class WorkerConnection(PMRConnection):
         self.result_file = None
         self.data_file = None
 
+        self.running = False
+
         super().__init__(file_descriptor, address)
 
     def __str__(self):

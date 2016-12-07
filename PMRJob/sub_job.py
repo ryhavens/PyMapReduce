@@ -42,6 +42,9 @@ def chunk_input_data_by_size_and_workers(data_path, n_workers):
     partition_paths = []
     partition_handlers = []
 
+
+    # TODO main server should be aware of these values as they impact the 
+    # progress measure
     file_size = os.path.getsize(data_path)
     # round up since rounding down can cause more chunks than workers (very bad)
     chunk_size = ceil(file_size / (1.0*n_workers))

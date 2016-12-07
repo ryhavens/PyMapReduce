@@ -62,6 +62,8 @@ def handle_message(message, connection, num_workers=None,
     :return: Message list to write to worker
     """
     connection.prev_message = message.m_type
+    # figured this might as well go here
+    connection.last_heartbeat_ack = time.time()
     print(message)
 
     if message.is_type(MessageTypes.SUBMIT_JOB):
@@ -133,12 +135,15 @@ def handle_message(message, connection, num_workers=None,
         return []
 
     elif message.is_type(MessageTypes.JOB_START_ACK):
+        print("JOB START ACK")
+        connection.running = True
         return []
 
     elif message.is_type(MessageTypes.JOB_DONE):
         connection.result_file = message.get_body()
 
         # End job
+        connection.running = False
         job = connection.current_job
         job.post_execute(connection.result_file)
 
@@ -163,6 +168,5 @@ def handle_message(message, connection, num_workers=None,
 
         connection.progress = int(progress)
         connection.byte_processing_rate = float(rate)
-        connection.last_heartbeat_ack = time.time()
 
         return []

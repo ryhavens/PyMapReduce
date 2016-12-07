@@ -50,6 +50,10 @@ class Server(object):
 
         self.slow = options.slow
 
+        # max time allowed in between heartbeats of running workers
+        # before the worker is assumed dead
+        self.timeout_allowance = 5
+
     def stop_gui(self):
         """
         Cleans up the curses settings to return terminal
@@ -264,9 +268,7 @@ class Server(object):
                             self.update_job_distribution()
 
                     except (ClientDisconnectedException, ConnectionResetError) as e:
-                        print("Client disconnected")
-                        conn.return_resources()
-                        self.connections_list.remove(s)
+                        self.handle_conn_error(conn, "Disconnected")
 
             for s in writeable:
                 conn = self.connections_list.get_by_socket(s)
@@ -280,12 +282,26 @@ class Server(object):
 
             self.operational_check()
 
+    def handle_conn_error(self, conn, error=None):
+        print(error)
+        conn.return_resources()
+        self.connections_list.remove(conn.file_descriptor)
+
     # operational_check
     # Performs any operations the server deems necessary to improve performance
     #   and/or handle subtle errors from clients. 
     def operational_check(self):
-        pass
+        self.check_timed_out_heartbeats()
 
+    # compares last acked heartbeat to current time, disconnects client if difference is
+    # greater than self.heartbeat_allowance
+    def check_timed_out_heartbeats(self):
+        current_time = time.time()
+        timed_out_conns = filter(lambda c: c.running and (current_time - c.last_heartbeat_ack) > self.timeout_allowance, self.connections_list.connections)
+        for conn in timed_out_conns:
+            self.handle_conn_error(conn, "Heartbeat timeout")
+
+    # serialized job ID
     def get_next_job_id(self):
         self.job_id += 1
         return self.job_id

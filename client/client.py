@@ -103,6 +103,9 @@ class Client(object):
                     self.prep_for_new_job()
                     ])
 
+                self.connection.send_message(JobStartAckMessage())
+                self.connection.write()
+
                 task.run()
 
                 if in_file:
