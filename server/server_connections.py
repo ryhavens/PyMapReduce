@@ -25,14 +25,13 @@ class WorkerConnection(PMRConnection):
         super().__init__(file_descriptor, address)
 
     def __str__(self):
-        return '<WorkerConnection: sock={sock} subscribed={subscribed} current_job={job} rate={rate} last_hb_ack={time} data_file={data_file} result_file={result_file}'.format(
+        return '<WorkerConnection: sock={sock} subscribed={subscribed} current_job={job} rate={rate} last_hb_ack={time} data_file={data_file}'.format(
             sock=self.file_descriptor.fileno(), # change back to just file_descriptor to see other details
             subscribed=self.subscribed,
             job=self.current_job and self.current_job.id,
             rate=self.byte_processing_rate,
             time=time.strftime('%H:%M:%S', time.localtime(self.last_heartbeat_ack)),
             data_file = self.data_file,
-            result_file=self.result_file
         )
 
     def subscribe(self):
