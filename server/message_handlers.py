@@ -45,7 +45,7 @@ def is_valid_file_path(path):
         return False
 
 
-def handle_message(message, connection, num_partitions=1,
+def handle_message(message, connection, num_workers=None,
                    initialize_job=None, current_job_connection=None,
                    job_finished=None,
                    mark_job_as_finished=None):
@@ -68,6 +68,12 @@ def handle_message(message, connection, num_partitions=1,
         # TODO: Check if we can accept this job. Return error if not.
         # Probably just check the server.job_started boolean
 
+        if (current_job_connection is not None):
+            return [SubmitJobDeniedMessage(body='Server is busy with another job')]
+
+        if (num_workers() == 0):
+            return [SubmitJobDeniedMessage(body='No workers available')]
+
         mapper_name = SubmitJobMessage.get_mapper_name(message)
         reducer_name = SubmitJobMessage.get_reducer_name(message)
         data_file_path = SubmitJobMessage.get_data_file_path(message)
@@ -86,7 +92,7 @@ def handle_message(message, connection, num_partitions=1,
                 body='{fields} {verb} invalid path{s}.'.format(
                     fields=', '.join(invalid_fields),
                     verb='is' if len(invalid_fields) == 1 else 'are',
-                    s='' if len(invalid_fields) == 1 else ''
+                    s='' if len(invalid_fields) == 1 else 's'
                 )
             )]
         else:
@@ -138,7 +144,6 @@ def handle_message(message, connection, num_partitions=1,
 
         if job_finished():  # Overall job
             print('Job finished. Returning results to submitter.')
-            # result_file = get_job_result_file_path(num_partitions)
             current_job_connection.send_message(
                 SubmittedJobFinishedMessage()
             )
@@ -156,6 +161,7 @@ def handle_message(message, connection, num_partitions=1,
         progress = JobHeartbeatMessage.get_progress(message)
         rate = JobHeartbeatMessage.get_rate(message)
 
+        connection.progress = int(progress)
         connection.byte_processing_rate = float(rate)
         connection.last_heartbeat_ack = time.time()
 

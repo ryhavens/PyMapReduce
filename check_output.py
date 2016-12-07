@@ -10,7 +10,7 @@ def parse_opts():
 
 options, args = parse_opts()
 
-print('Checking files in output against canonical file %s' % options.datafile)
+print('Checking files in output against benchmark file %s' % options.datafile)
 
 right = open(options.datafile,'r')
 outfile = open('compiled_output.txt','w')
@@ -20,7 +20,7 @@ for line in right:
     line = line.strip().split('\t')
     vocabulary[line[0]] = int(line[1])
 
-words_in_canonical = len(vocabulary.keys())
+words_in_benchmark = len(vocabulary.keys())
 
 out_count = 0
 for filename in os.listdir('output'):
@@ -30,11 +30,11 @@ for filename in os.listdir('output'):
             out_count += 1
             line = line.strip().split('\t')
             if not vocabulary[line[0]]:
-                print('%s was not found in canonical text' % line[0])
+                print('%s was not found in benchmark text' % line[0])
             elif (vocabulary[line[0]] != int(line[1])):
                 print('%s: Expected %d, found %d' % (line[0], vocabulary[line[0]], int(line[1])))
 
-print('%d words in canonical, %d words in output' % (words_in_canonical, out_count))
+print('%d words in benchmark, %d words in output' % (words_in_benchmark, out_count))
 print('Writing compiled output to compiled_output.txt')
 print('Done')
 
