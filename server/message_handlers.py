@@ -137,9 +137,9 @@ def handle_message(message, connection, num_partitions=1,
 
         if job_finished():  # Overall job
             print('Job finished. Returning results to submitter.')
-            result_file = get_job_result_file_path(num_partitions)
+            # result_file = get_job_result_file_path(num_partitions)
             current_job_connection.send_message(
-                SubmittedJobFinishedMessage(result_file)
+                SubmittedJobFinishedMessage()
             )
 
         # Reset this connection so that it can be assigned a new job

@@ -3,26 +3,21 @@ from PMRProcessing.PMRJob import PMRJob
 from PMRProcessing.heartbeat.heartbeat import *
 import time
 
+from filesystems import SimpleFileSystem
+
 
 class Mapper(BeatingProcess, PMRJob):
     """
     @brief Class for mapper.
     """
-    def __init__(self, key, mapper_cls, num_workers, heartbeat_id="Mapper", in_stream=sys.stdin, out_stream=sys.stdout, slow_mode=False):
+    def __init__(self, key, mapper_cls, num_workers, heartbeat_id="Mapper", in_stream=sys.stdout, slow_mode=False):
         BeatingProcess.__init__(self)
-        self.in_stream = in_stream
-        self.out_stream = out_stream
         self.heartbeat_id = heartbeat_id
+        self.in_stream = in_stream
         self.slow_mode = slow_mode
         self.mapper = mapper_cls()
         self.key = key
         self.num_workers = num_workers
-
-    def set_in_stream(self, in_stream):
-        self.in_stream = in_stream
-
-    def set_out_stream(self, out_stream):
-        self.out_stream = out_stream
 
     def map(self):
         """
@@ -43,8 +38,19 @@ class Mapper(BeatingProcess, PMRJob):
         )
 
         # Spill to disk
+        partition_files = []
+        sf = SimpleFileSystem()
+        for i in range(self.num_workers):
+            partition_files.append(
+                sf.open(sf.get_mapper_output_file(i), 'w')
+            )
+
         for key, value in output:
-            self.out_stream.write('%s\t%s\n' % (key, value))
+            partition_num = hashcode(key) % self.num_workers
+            partition_files[partition_num].write('%s\t%s\n' % (key, value))
+
+        for partition_file in partition_files:
+            sf.close(partition_file)
 
     def run(self):
         self.progress = 0

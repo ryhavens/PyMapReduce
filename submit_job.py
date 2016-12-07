@@ -81,9 +81,7 @@ def main():
                     complete = True
 
         if message.is_type(MessageTypes.SUBMITTED_JOB_FINISHED):
-            print('Job finished. Output located at: {}'.format(
-                SubmittedJobFinishedMessage.get_data_file_path(message)
-            ))
+            print('Job finished. Output located in /output')
         else:
             print('Received unexpected message from server')
 

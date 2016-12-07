@@ -33,39 +33,13 @@ def setup_mapping_tasks(data_path, mapper_name, num_workers, sub_jobs, get_next_
 
 
 def setup_reducing_tasks(reducer_name, num_reducers, sub_jobs, get_next_job_id):
-    sf = SimpleFileSystem()
-
-    # First set up the files correctly
-    # Open num_reducers files
-    paths = []
-    partitions = []
-    for i in range(num_reducers):
-        paths.append(sf.get_writeable_file_path())
-        partitions.append(
-            sf.open(paths[-1], 'w')
-        )
-
-    # For each of the mapped files, move data into the correct partition
-    for job in sub_jobs:
-        if job.instruction_type == 'Mapper':
-            with open(job.result_file, 'r') as rf:
-                for line in rf:
-                    line = line.strip()
-                    key, value = line.split('\t')
-                    partitions[hashcode(key) % num_reducers].write('%s\n' % line)
-
-    # Close partition files
-    for f in partitions:
-        sf.close(f)
-
     # For each partition, create a reducer job
-    for index, path in enumerate(paths):
+    for index in range(num_reducers):
         sub_jobs.append(SubJob(
             id=get_next_job_id(),
             instruction_path=reducer_name,
             num_workers=num_reducers,
             instruction_type='Reducer',
-            data_path=path,
             partition_num=index,
             do_after=[set_result_file]
         ))
