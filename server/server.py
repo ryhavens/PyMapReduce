@@ -133,8 +133,10 @@ class Server(object):
         self.job_submitter_connection = submitter
         self.job_started = True
         self.mapping = True
+        self.reducing = False
         self.mapper_name = mapper_name
         self.reducer_name = reducer_name
+        # equal partitions distributed based off number of workers
         self.num_partitions = len([c for c in self.connections_list.connections if c.subscribed])
         
         # monitor utilization of worker resources during job
