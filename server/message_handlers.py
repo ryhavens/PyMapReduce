@@ -47,7 +47,8 @@ def is_valid_file_path(path):
 
 def handle_message(message, connection, num_partitions=1,
                    initialize_job=None, current_job_connection=None,
-                   job_finished=None,
+                   ready_for_new_job=None,
+                   job_finished=None, clean_up=None,
                    mark_job_as_finished=None):
     """
     Process the messages received from workers and perform
@@ -65,33 +66,35 @@ def handle_message(message, connection, num_partitions=1,
     print(message)
 
     if message.is_type(MessageTypes.SUBMIT_JOB):
-        # TODO: Check if we can accept this job. Return error if not.
-        # Probably just check the server.job_started boolean
+        if ready_for_new_job():
+            mapper_name = SubmitJobMessage.get_mapper_name(message)
+            reducer_name = SubmitJobMessage.get_reducer_name(message)
+            data_file_path = SubmitJobMessage.get_data_file_path(message)
 
-        mapper_name = SubmitJobMessage.get_mapper_name(message)
-        reducer_name = SubmitJobMessage.get_reducer_name(message)
-        data_file_path = SubmitJobMessage.get_data_file_path(message)
+            invalid_fields = []
+            if not is_valid_package_path(mapper_name, 'Mapper'):
+                invalid_fields.append(mapper_name)
+            if not is_valid_package_path(reducer_name, 'Reducer'):
+                invalid_fields.append(reducer_name)
+            if not is_valid_file_path(data_file_path):
+                invalid_fields.append(data_file_path)
 
-        invalid_fields = []
-        if not is_valid_package_path(mapper_name, 'Mapper'):
-            invalid_fields.append(mapper_name)
-        if not is_valid_package_path(reducer_name, 'Reducer'):
-            invalid_fields.append(reducer_name)
-        if not is_valid_file_path(data_file_path):
-            invalid_fields.append(data_file_path)
-
-        if invalid_fields:
-            # Not valid
-            return [SubmitJobDeniedMessage(
-                body='{fields} {verb} invalid path{s}.'.format(
-                    fields=', '.join(invalid_fields),
-                    verb='is' if len(invalid_fields) == 1 else 'are',
-                    s='' if len(invalid_fields) == 1 else ''
-                )
-            )]
+            if invalid_fields:
+                # Not valid
+                return [SubmitJobDeniedMessage(
+                    body='{fields} {verb} invalid path{s}.'.format(
+                        fields=', '.join(invalid_fields),
+                        verb='is' if len(invalid_fields) == 1 else 'are',
+                        s='' if len(invalid_fields) == 1 else ''
+                    )
+                )]
+            else:
+                initialize_job(connection, mapper_name, reducer_name, data_file_path)
+                return [SubmitJobAckMessage()]
         else:
-            initialize_job(connection, mapper_name, reducer_name, data_file_path)
-            return [SubmitJobAckMessage()]
+            return [SubmitJobDeniedMessage(
+                body='Server not ready'
+            )]
 
     elif message.is_type(MessageTypes.SUBSCRIBE_MESSAGE):
         connection.subscribe()
@@ -142,6 +145,7 @@ def handle_message(message, connection, num_partitions=1,
             current_job_connection.send_message(
                 SubmittedJobFinishedMessage()
             )
+            clean_up()
 
         # Reset this connection so that it can be assigned a new job
         connection.prep_for_new_job()

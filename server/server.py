@@ -143,6 +143,31 @@ class Server(object):
         SimpleFileSystem().clean_directories()
         setup_mapping_tasks(data_file_path, mapper_name, self.num_partitions, self.sub_jobs, self.get_next_job_id)
 
+    def clean_up(self):
+        """
+        Clean up after job finish
+        :return:
+        """
+        self.job_started = False
+        self.mapping = False
+        self.reducing = False
+        self.mapper_name = None
+        self.reducer_name = None
+        self.num_partitions = 1
+
+        self.job_submitter_connection = None
+        self.sub_jobs = list()
+
+    def ready_for_new_job(self):
+        """
+        Return if the server is ready to accept a job
+
+        job_started must be false and there must be workers
+        :return:
+        """
+        subs = [c for c in self.connections_list.connections if c.subscribed]
+        return not self.job_started and subs
+
     def job_finished(self):
         """
         Return whether the job is finished
@@ -241,7 +266,8 @@ class Server(object):
                                                       num_partitions=self.num_partitions,
                                                       initialize_job=self.initialize_job,
                                                       current_job_connection=self.job_submitter_connection,
-                                                      job_finished=self.job_finished,
+                                                      ready_for_new_job=self.ready_for_new_job,
+                                                      job_finished=self.job_finished, clean_up=self.clean_up,
                                                       mark_job_as_finished=self.mark_job_as_finished)
 
                             while to_write:
