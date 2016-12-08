@@ -329,11 +329,13 @@ class Server(object):
                         (conn.byte_processing_rate > top_rate_and_free.byte_processing_rate)):
                         top_rate_and_free = conn
                 elif ((low_rate is None) or \
-                    low_rate.byte_processing_rate > conn.byte_processing_rate):
+                    (low_rate.byte_processing_rate != 0 and low_rate.byte_processing_rate > conn.byte_processing_rate)):
                     low_rate = conn
 
         # this worker is ready to take on a job if needed
         if (top_rate_and_free is not None and low_rate is not None):
+            if (low_rate.byte_processing_rate == 0):
+                return
             multiplier = 1 if not self.reducing else 2 # progress updates twice for reducer
             # compute the estimated completion time of the job for the low rate worker
             low_rate_estimated_completion = self.estimate_completion_time(
@@ -341,9 +343,9 @@ class Server(object):
             top_rate_estimated_completion = self.estimate_completion_time(
                 multiplier, low_rate.chunk_size, 0, top_rate_and_free.byte_processing_rate)
 
-            print(time.strftime('%H:%M:%S', time.localtime(low_rate_estimated_completion)))
-            print(time.strftime('%H:%M:%S', time.localtime(top_rate_estimated_completion)))
-            print(top_rate_estimated_completion - low_rate_estimated_completion)
+            # print(time.strftime('%H:%M:%S', time.localtime(low_rate_estimated_completion)))
+            # print(time.strftime('%H:%M:%S', time.localtime(top_rate_estimated_completion)))
+            # print(top_rate_estimated_completion - low_rate_estimated_completion)
 
             if (low_rate_estimated_completion - top_rate_estimated_completion > self.time_buffer):
                 # they took our jobs!!!!!!!!
@@ -353,6 +355,8 @@ class Server(object):
 
     # generic function to estimate completion time
     def estimate_completion_time(self, multiplier, chunk_size, progress, byte_processing_rate):
+        if (byte_processing_rate == 0):
+            return 0
         return (multiplier * chunk_size - progress) / byte_processing_rate
 
     # compares last acked heartbeat to current time, disconnects client if difference is
