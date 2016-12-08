@@ -79,7 +79,7 @@ def handle_ack_timeout(expected_ack_triplet, connection, current_job_connection)
 
 def handle_message(message, connection, num_partitions=1,
                    initialize_job=None, current_job_connection=None,
-                   ready_for_new_job=None,
+                   num_workers=None,
                    job_finished=None,
                    mark_job_as_finished=None):
     """
@@ -95,6 +95,8 @@ def handle_message(message, connection, num_partitions=1,
     :return: Message list to write to worker
     """
     connection.prev_message = message.m_type
+    # figured this might as well go here
+    connection.last_heartbeat_ack = time.time()
 
     TIMEOUT_SECONDS = 1
     msg_index = None
@@ -113,35 +115,42 @@ def handle_message(message, connection, num_partitions=1,
     print(message)
 
     if message.is_type(MessageTypes.SUBMIT_JOB):
-        if ready_for_new_job():
-            mapper_name = SubmitJobMessage.get_mapper_name(message)
-            reducer_name = SubmitJobMessage.get_reducer_name(message)
-            data_file_path = SubmitJobMessage.get_data_file_path(message)
+        if (current_job_connection is not None):
+            return [SubmitJobDeniedMessage(body='Server is busy with another job')]
 
-            invalid_fields = []
-            if not is_valid_package_path(mapper_name, 'Mapper'):
-                invalid_fields.append(mapper_name)
-            if not is_valid_package_path(reducer_name, 'Reducer'):
-                invalid_fields.append(reducer_name)
-            if not is_valid_file_path(data_file_path):
-                invalid_fields.append(data_file_path)
+        if (num_workers() == 0):
+            return [SubmitJobDeniedMessage(body='No workers available')]
 
-            if invalid_fields:
-                # Not valid
-                return [SubmitJobDeniedMessage(
-                    body='{fields} {verb} invalid path{s}.'.format(
-                        fields=', '.join(invalid_fields),
-                        verb='is' if len(invalid_fields) == 1 else 'are',
-                        s='' if len(invalid_fields) == 1 else ''
-                    )
-                )]
-            else:
-                initialize_job(connection, mapper_name, reducer_name, data_file_path)
-                return [SubmitJobAckMessage()]
-        else:
+        mapper_name = SubmitJobMessage.get_mapper_name(message)
+        reducer_name = SubmitJobMessage.get_reducer_name(message)
+        data_file_path = SubmitJobMessage.get_data_file_path(message)
+        # TODO: Check if we can accept this job. Return error if not.
+        # Probably just check the server.job_started boolean
+
+        mapper_name = SubmitJobMessage.get_mapper_name(message)
+        reducer_name = SubmitJobMessage.get_reducer_name(message)
+        data_file_path = SubmitJobMessage.get_data_file_path(message)
+
+        invalid_fields = []
+        if not is_valid_package_path(mapper_name, 'Mapper'):
+            invalid_fields.append(mapper_name)
+        if not is_valid_package_path(reducer_name, 'Reducer'):
+            invalid_fields.append(reducer_name)
+        if not is_valid_file_path(data_file_path):
+            invalid_fields.append(data_file_path)
+
+        if invalid_fields:
+            # Not valid
             return [SubmitJobDeniedMessage(
-                body='Server not ready'
+                body='{fields} {verb} invalid path{s}.'.format(
+                    fields=', '.join(invalid_fields),
+                    verb='is' if len(invalid_fields) == 1 else 'are',
+                    s='' if len(invalid_fields) == 1 else ''
+                )
             )]
+        else:
+            initialize_job(connection, mapper_name, reducer_name, data_file_path)
+            return [SubmitJobAckMessage()]
 
     elif message.is_type(MessageTypes.SUBSCRIBE_MESSAGE):
         connection.subscribe()
@@ -181,12 +190,14 @@ def handle_message(message, connection, num_partitions=1,
         return []
 
     elif message.is_type(MessageTypes.JOB_START_ACK):
+        connection.running = True
         return []
 
     elif message.is_type(MessageTypes.JOB_DONE):
         connection.result_file = message.get_body()
 
         # End job
+        connection.running = False
         job = connection.current_job
         job.post_execute(connection.result_file)
 
@@ -212,7 +223,7 @@ def handle_message(message, connection, num_partitions=1,
         progress = JobHeartbeatMessage.get_progress(message)
         rate = JobHeartbeatMessage.get_rate(message)
 
+        connection.progress = int(progress)
         connection.byte_processing_rate = float(rate)
-        connection.last_heartbeat_ack = time.time()
 
         return []

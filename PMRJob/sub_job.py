@@ -1,6 +1,7 @@
 import os
 
 from filesystems import SimpleFileSystem
+from math import ceil, inf
 
 
 def chunk_input_data(data_path, lines_per_partition=500):
@@ -29,7 +30,47 @@ def chunk_input_data(data_path, lines_per_partition=500):
 
     fs.close(partition_handlers[partition])
 
+    print (partition_paths)
     return partition_paths
+
+def chunk_input_data_by_size_and_workers(data_path, n_workers):
+    """
+    Create n_workers partitions of roughly equal number of bytes
+    :return:
+    """
+    partition = -1
+    partition_paths = []
+    partition_handlers = []
+
+
+    # TODO main server should be aware of these values as they impact the 
+    # progress measure
+    file_size = os.path.getsize(data_path)
+    # round up since rounding down can cause more chunks than workers (very bad)
+    chunk_size = ceil(file_size / (1.0*n_workers))
+
+    fs = SimpleFileSystem()
+    bytes_chunked = inf # immediately create partition
+    with fs.open(data_path, 'r') as f:
+        for line in f:
+            if bytes_chunked >= chunk_size:
+                # Clean up open descriptor
+                if partition_handlers:
+                    fs.close(partition_handlers[partition])
+
+                # Create new partition
+                partition += 1
+                partition_paths.append(fs.get_writeable_file_path())
+                partition_handlers.append(fs.open(partition_paths[partition], 'w'))
+
+                bytes_chunked = 0
+
+            partition_handlers[partition].write(line)
+            bytes_chunked += len(line) # assuming char is 1 byte (hopefully a safe assumption)
+
+    fs.close(partition_handlers[partition])
+
+    return partition_paths 
 
 
 def set_result_file(job, path):

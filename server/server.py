@@ -24,6 +24,8 @@ class Server(object):
         self.server_address = (options.host, options.port)
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setblocking(1)
+        self.sock.settimeout(1.0)
         self.sock.bind(self.server_address)
         self.sock.listen(10)  # Backlog of 10
 
@@ -35,7 +37,7 @@ class Server(object):
         self.reducing = False
         self.mapper_name = None
         self.reducer_name = None
-        self.num_partitions = 1
+        self.num_workers = 0
 
         self.job_submitter_connection = None  # The conn that submitted the current job
         self.sub_jobs = list()  # Jobs to be executed at next opportunity
@@ -47,6 +49,10 @@ class Server(object):
             curses.noecho()  # Don't show typed characters
 
         self.slow = options.slow
+
+        # max time allowed in between heartbeats of running workers
+        # before the worker is assumed dead
+        self.timeout_allowance = 5
 
     def stop_gui(self):
         """
@@ -105,7 +111,8 @@ class Server(object):
         if self.mapping and not remaining_map_jobs:
             self.mapping = False
             self.reducing = True
-            setup_reducing_tasks(self.reducer_name, self.num_partitions, self.sub_jobs, self.get_next_job_id)
+            self.reset_performance_stats()
+            setup_reducing_tasks(self.reducer_name, self.num_workers, self.sub_jobs, self.get_next_job_id)
 
         # Find clients that can do the job for us
         # Aka clients who are subscribed and don't have a job id
@@ -133,25 +140,20 @@ class Server(object):
         self.job_submitter_connection = submitter
         self.job_started = True
         self.mapping = True
+        self.reducing = False
         self.mapper_name = mapper_name
         self.reducer_name = reducer_name
-        self.num_partitions = len([c for c in self.connections_list.connections if c.subscribed])
+        # equal partitions distributed based off number of workers
+        self.num_workers = self.get_num_subscribed_workers()
         
         # monitor utilization of worker resources during job
         self.begin_monitor_job_efficiency()
 
         SimpleFileSystem().clean_directories()
-        setup_mapping_tasks(data_file_path, mapper_name, self.num_partitions, self.sub_jobs, self.get_next_job_id)
+        setup_mapping_tasks(data_file_path, mapper_name, self.num_workers, self.sub_jobs, self.get_next_job_id)
 
-    def ready_for_new_job(self):
-        """
-        Return if the server is ready to accept a job
-
-        job_started must be false and there must be workers
-        :return:
-        """
-        subs = [c for c in self.connections_list.connections if c.subscribed]
-        return not self.job_started and subs
+    def get_num_subscribed_workers(self):
+        return len([c for c in self.connections_list.connections if c.subscribed])
 
     def job_finished(self):
         """
@@ -177,8 +179,9 @@ class Server(object):
         self.reducer_name = None
         self.job_submitter_connection = None
         self.sub_jobs = []
-        self.num_partitions = 1
+        # self.num_workers = 0
         self.end_monitor_job_efficiency()
+        self.reset_performance_stats()
 
     def update_interface(self):
         """
@@ -234,25 +237,27 @@ class Server(object):
             read_list += self.connections_list.get_read_set()
             write_list = self.connections_list.get_write_set()
 
-            readable, writeable, _ = select.select(read_list, write_list, [])
             if (self.job_started):
                 print (self.connections_list)
+            readable, writeable, _ = select.select(read_list, write_list, [], 1.0)
             for s in readable:
                 if s == self.sock:
-                    connection, client_address = self.sock.accept()
-                    connection.setblocking(0)
+                    try:
+                        connection, client_address = self.sock.accept()
+                        connection.setblocking(0)
 
-                    self.connections_list.add(WorkerConnection(connection, client_address))
+                        self.connections_list.add(WorkerConnection(connection, client_address))
+                    except:
+                        pass
                 else:
                     conn = self.connections_list.get_by_socket(s)
                     try:
                         message = conn.receive()
                         if message:
                             to_write = handle_message(message, conn,
-                                                      num_partitions=self.num_partitions,
+                                                      num_workers=self.get_num_subscribed_workers,
                                                       initialize_job=self.initialize_job,
                                                       current_job_connection=self.job_submitter_connection,
-                                                      ready_for_new_job=self.ready_for_new_job,
                                                       job_finished=self.job_finished,
                                                       mark_job_as_finished=self.mark_job_as_finished)
 
@@ -260,9 +265,9 @@ class Server(object):
                                 w_message = to_write.pop()
                                 conn.send_message(w_message)
                             self.update_job_distribution()
+
                     except (ClientDisconnectedException, ConnectionResetError) as e:
-                        conn.return_resources()
-                        self.connections_list.remove(s)
+                        self.handle_conn_error(conn, "Disconnected")
 
             for s in writeable:
                 conn = self.connections_list.get_by_socket(s)
@@ -274,6 +279,28 @@ class Server(object):
                         # print(e)
                         pass
 
+            self.operational_check()
+
+    def handle_conn_error(self, conn, error=None):
+        print(error)
+        conn.return_resources()
+        self.connections_list.remove(conn.file_descriptor)
+
+    # operational_check
+    # Performs any operations the server deems necessary to improve performance
+    #   and/or handle subtle errors from clients.
+    def operational_check(self):
+        self.check_timed_out_heartbeats()
+
+    # compares last acked heartbeat to current time, disconnects client if difference is
+    # greater than self.heartbeat_allowance
+    def check_timed_out_heartbeats(self):
+        current_time = time.time()
+        timed_out_conns = filter(lambda c: c.running and (current_time - c.last_heartbeat_ack) > self.timeout_allowance, self.connections_list.connections)
+        for conn in timed_out_conns:
+            self.handle_conn_error(conn, "Heartbeat timeout")
+
+    # serialized job ID
     def get_next_job_id(self):
         self.job_id += 1
         return self.job_id
@@ -321,6 +348,12 @@ class Server(object):
             (self.get_efficiency() * self.monitor_interval + \
             self.monitor_stats['avg_efficiency'] * (time.time() - self.monitor_stats['start_time'])) / \
             (self.monitor_interval + time.time() - self.monitor_stats['start_time'])
+
+    # client performance should only apply per phase
+    def reset_performance_stats(self):
+        for c in self.connections_list.connections:
+            c.byte_processing_rate = -1
+            c.progress = 0
 
 
 

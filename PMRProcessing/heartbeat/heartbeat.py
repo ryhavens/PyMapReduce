@@ -11,7 +11,7 @@ class Heartbeat(Timer):
 
 
 class BeatingProcess:
-	def __init__(self, heartbeat_interval=0.001, heartbeat_stream=sys.stderr):
+	def __init__(self, heartbeat_interval=0.2, heartbeat_stream=sys.stderr):
 		self.heartbeat = Heartbeat(heartbeat_interval, self.Beat)
 		self.heartbeat_stream = heartbeat_stream
 		self.heartbeat_interval = heartbeat_interval
