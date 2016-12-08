@@ -30,7 +30,6 @@ def chunk_input_data(data_path, lines_per_partition=500):
 
     fs.close(partition_handlers[partition])
 
-    print (partition_paths)
     return partition_paths
 
 

@@ -262,8 +262,8 @@ class Server(object):
             read_list += self.connections_list.get_read_set()
             write_list = self.connections_list.get_write_set()
 
-            if self.job_started:
-                print(self.connections_list)
+            # if self.job_started:
+            #     print(self.connections_list)
             readable, writeable, _ = select.select(read_list, write_list, [], 1.0)
             for s in readable:
                 if s == self.sock:
@@ -470,13 +470,11 @@ class Server(object):
             return False
 
     def handle_ack_timeout(self, expected_ack_triplet, connection, current_job_connection):
-        print('HANDING ACK TIMEOUT')
         expected_ack_triplet[2] += 1
         ack_cls, expected_time_start, num_timeouts = expected_ack_triplet
 
         if num_timeouts >= 3:
             # This worker is "dead". Recoup its job and disconnect.
-            print('Worker dead!')
             connection.return_resources()
             connection.file_descriptor.close()
             self.connections_list.remove(connection.file_descriptor)
