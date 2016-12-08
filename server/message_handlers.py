@@ -64,7 +64,7 @@ def handle_message(message, connection, num_workers=None,
     connection.prev_message = message.m_type
     # figured this might as well go here
     connection.last_heartbeat_ack = time.time()
-    print(message)
+    # print(message)
 
     if message.is_type(MessageTypes.SUBMIT_JOB):
         # TODO: Check if we can accept this job. Return error if not.
@@ -113,6 +113,7 @@ def handle_message(message, connection, num_workers=None,
         job = connection.current_job
         job.pending_assignment = False
         connection.data_file = job.data_path
+        connection.partition_num = job.partition_num
         return [
             JobInstructionsFileMessage(job.instruction_path, job.instruction_type,
                                        job.num_workers, job.partition_num),
@@ -135,7 +136,6 @@ def handle_message(message, connection, num_workers=None,
         return []
 
     elif message.is_type(MessageTypes.JOB_START_ACK):
-        print("JOB START ACK")
         connection.running = True
         return []
 

@@ -14,6 +14,7 @@ class WorkerConnection(PMRConnection):
         self.instructions_ackd = False
         self.data_ackd = False
 
+        self.progress = 0
         self.byte_processing_rate = -1
         self.last_heartbeat_ack = -1
 

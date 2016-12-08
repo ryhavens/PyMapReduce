@@ -2,6 +2,7 @@ import time
 import curses
 import socket
 import select
+import os
 from optparse import OptionParser
 
 from PMRJob.job import setup_mapping_tasks, setup_reducing_tasks
@@ -32,11 +33,14 @@ class Server(object):
         self.running = True
         self.connections_list = ConnectionsList()
 
+        # job related stats
         self.job_started = False
         self.mapping = False
         self.reducing = False
         self.mapper_name = None
         self.reducer_name = None
+
+        # number of connected workers
         self.num_workers = 0
 
         self.job_submitter_connection = None  # The conn that submitted the current job
@@ -48,11 +52,16 @@ class Server(object):
             self.stdscr = curses.initscr()  # For the info pane
             curses.noecho()  # Don't show typed characters
 
+        # slow mode for debugging
         self.slow = options.slow
 
         # max time allowed in between heartbeats of running workers
         # before the worker is assumed dead
         self.timeout_allowance = 5
+        # buffer to avoid unnecessary slowdown in performance when determining
+        # whether to boot an underperforming worker
+        self.time_buffer = 5 
+
 
     def stop_gui(self):
         """
@@ -121,11 +130,22 @@ class Server(object):
         for index, job in enumerate(self.sub_jobs):
             if job.client is None and conns:
                 conn = conns.pop()
-                job.pre_execute()
-                job.client = conn
-                job.pending_assignment = True
-                conn.current_job = job
-                conn.send_message(JobReadyMessage(str(job.id)))
+                self.assign_job(conn, job)
+                
+
+    def assign_job(self, conn, job):
+        # hacky workaround because mapper reads file from data_path and reducer
+        # reads files (plural) from a partition directory
+        if (job.data_path is None):
+            conn.chunk_size = sum([os.path.getsize(file) for file in SimpleFileSystem().get_partition_files(job.partition_num)])
+        else:
+            conn.chunk_size = os.path.getsize(job.data_path)
+
+        job.pre_execute()
+        job.client = conn
+        job.pending_assignment = True
+        conn.current_job = job
+        conn.send_message(JobReadyMessage(str(job.id)))
 
     # sort clients by their estimated processing rate
     def update_client_performance_statistics(self):
@@ -237,11 +257,10 @@ class Server(object):
             write_list = self.connections_list.get_write_set()
 
             if (self.job_started):
+                pass
                 print (self.connections_list)
             readable, writeable, _ = select.select(read_list, write_list, [], 1.0)
             for s in readable:
-                # print(2)
-
                 if s == self.sock:
                     try:
                         connection, client_address = self.sock.accept()
@@ -277,7 +296,6 @@ class Server(object):
                         conn.write()
                     except Exception as e:
                         # TODO: What exceptions can happen here? Should we resend?
-                        # print(e)
                         pass
 
             self.operational_check()
@@ -291,7 +309,52 @@ class Server(object):
     # Performs any operations the server deems necessary to improve performance
     #   and/or handle subtle errors from clients. 
     def operational_check(self):
-        self.check_timed_out_heartbeats()
+        if (self.mapping or self.reducing):
+            self.performance_check()
+            self.check_timed_out_heartbeats()
+
+    # performance_check
+    # If there are nodes in the network that have a processing rate 1000+ times
+    # slower than that of a free node, kick out that worker as it is only 
+    # hindering the performance of jobs
+    def performance_check(self):
+        top_rate_and_free = None
+        low_rate = None
+
+        for conn in self.connections_list.connections:
+            if (conn.subscribed):
+                if (conn.running == False):
+                    if ((top_rate_and_free is None) or \
+                        (conn.byte_processing_rate > top_rate_and_free.byte_processing_rate)):
+                        top_rate_and_free = conn
+                elif ((low_rate is None) or \
+                    low_rate.byte_processing_rate > conn.byte_processing_rate):
+                    low_rate = conn
+
+        # this worker is ready to take on a job if needed
+        if (top_rate_and_free is not None and low_rate is not None):
+            multiplier = 1 if not self.reducing else 2 # progress updates twice for reducer
+            # compute the estimated completion time of the job for the low rate worker
+            low_rate_estimated_completion = self.estimate_completion_time(
+                multiplier, low_rate.chunk_size, low_rate.progress, low_rate.byte_processing_rate)
+            top_rate_estimated_completion = self.estimate_completion_time(
+                multiplier, low_rate.chunk_size, 0, top_rate_and_free.byte_processing_rate)
+
+            print(time.strftime('%H:%M:%S', time.localtime(low_rate_estimated_completion)))
+            print(time.strftime('%H:%M:%S', time.localtime(top_rate_estimated_completion)))
+            print(top_rate_estimated_completion - low_rate_estimated_completion)
+
+            if (low_rate_estimated_completion - top_rate_estimated_completion > self.time_buffer):
+                # they took our jobs!!!!!!!!
+                # dey terk er jerbsss!!!
+                self.assign_job(top_rate_and_free, low_rate.current_job)
+                self.handle_conn_error(low_rate, error="Client is too slow")
+
+    # generic function to estimate completion time
+    def estimate_completion_time(self, multiplier, chunk_size, progress, byte_processing_rate):
+        return (multiplier * chunk_size - progress) / byte_processing_rate
+
+
 
     # compares last acked heartbeat to current time, disconnects client if difference is
     # greater than self.heartbeat_allowance

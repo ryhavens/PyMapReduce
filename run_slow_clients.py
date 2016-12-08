@@ -21,14 +21,14 @@ def main():
     """
     processes = []
 
-    for i in range(NUM_CLIENTS-1):
+    for i in range(NUM_CLIENTS):
         p = Process(target=spawn_slow_client)
         p.start()
         processes.append(p)
 
-    p = Process(target=spawn_client)
-    p.start()
-    processes.append(p)
+#    p = Process(target=spawn_client)
+#    p.start()
+#    processes.append(p)
 
     for p in processes:
         p.join()

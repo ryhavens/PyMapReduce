@@ -28,8 +28,7 @@ class Mapper(BeatingProcess, PMRJob):
             # can set this higher or lower for slower speeds
             # this value makes speeds ~10 times slower
             if (self.slow_mode):
-                for i in range(1000):
-                    continue
+                time.sleep(0.001)
             self.mapper.map(self.key, line, output)
             self.progress += len(line)
 
@@ -49,10 +48,6 @@ class Mapper(BeatingProcess, PMRJob):
             )
 
         for key, value in output:
-            if (self.slow_mode):
-                for i in range(1000):
-                    continue
-            self.progress += len(line)
             partition_num = hashcode(key) % self.num_workers
             partition_files[partition_num].write('%s\t%s\n' % (key, value))
 
