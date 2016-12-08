@@ -31,31 +31,25 @@ class Reducer(BeatingProcess, PMRJob):
                 key, value = line.split('\t')
 
                 if (self.slow_mode):
-                    for i in range(1000):
-                        continue
+                    time.sleep(0.001)
 
                 if key in key_vals_map:
                     key_vals_map[key].append(value)
                 else:
                     key_vals_map[key] = [value]
 
-            self.progress += len(line)
+                self.progress += len(line)
 
         output = []
         for key, value in sorted(key_vals_map.items(), key=lambda pair: (hashcode(pair[0]) % self.num_workers, pair[0])):
             if (self.slow_mode):
-                for i in range(1000):
-                    continue
+                time.sleep(0.001)
             reducer = self.reducer_cls()
             reducer.reduce(key, value, output)
             self.progress += len(key)
 
         output_file = fs.open(fs.get_output_file(self.partition_num), 'w')
         for key, value in output:
-            if (self.slow_mode):
-                for i in range(1000):
-                    continue
-            self.progress += len(key)
             output_file.write('%s\t%s\n' % (key, value))
         fs.close(output_file)
 

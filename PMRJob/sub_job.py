@@ -121,6 +121,17 @@ class SubJob:
 
         self.done = False
 
+    def __str__(self):
+        return '<SubJob: id={id} instruction_type={instruction_type} data_path={data_path} client={client} partition_num={partition_num} pending_assignment={assigned} done={done}'.format(
+            id=self.id,
+            instruction_type=self.instruction_type,
+            data_path=self.data_path,
+            client=self.client,
+            partition_num=self.partition_num,
+            assigned = self.pending_assignment,
+            done = self.done
+        )
+
     def pre_execute(self):
         """
         Run any do_before methods that were specified
