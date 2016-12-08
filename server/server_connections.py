@@ -12,13 +12,17 @@ class WorkerConnection(PMRConnection):
         self.current_job = None
 
         self.instructions_ackd = False
-        self.data_ackd = False
+        self.data_file_ackd = False
 
         self.byte_processing_rate = -1
         self.last_heartbeat_ack = -1
 
         self.result_file = None
         self.data_file = None
+
+        # Messages that this conn needs to receive
+        # A list of tuples (message_cls, expect_start_time, num_timeouts)
+        self.expected_messages = []
 
         super().__init__(file_descriptor, address)
 
@@ -48,7 +52,7 @@ class WorkerConnection(PMRConnection):
         self.job_id = None
         self.current_job = None
         self.instructions_ackd = False
-        self.data_ackd = False
+        self.data_file_ackd = False
         self.data_file = None
         self.result_file = None
 
@@ -62,6 +66,7 @@ class WorkerConnection(PMRConnection):
         if self.current_job:
             self.current_job.client = None
             self.current_job.pending_assignment = False
+            self.current_job.done = False
 
 
 class ConnectionsList(object):

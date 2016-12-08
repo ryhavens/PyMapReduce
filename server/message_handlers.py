@@ -2,6 +2,7 @@ import time
 import string
 import random
 import importlib
+from datetime import datetime, timedelta
 
 from PMRJob.job import get_job_result_file_path
 from filesystems import SimpleFileSystem
@@ -9,7 +10,7 @@ from messages import *
 
 
 def should_send_job_start(conn):
-    return conn.datafile_ackd and conn.instructions_ackd
+    return conn.data_file_ackd and conn.instructions_ackd
 
 
 def is_valid_package_path(package_path, cls):
@@ -45,10 +46,41 @@ def is_valid_file_path(path):
         return False
 
 
+def handle_ack_timeout(expected_ack_triplet, connection, current_job_connection):
+    print('HANDING ACK TIMEOUT')
+    # TODO: Replace current_job_connection with connection once hooked into server loop
+    expected_ack_triplet[2] += 1
+    ack_cls, expected_time_start, num_timeouts = expected_ack_triplet
+
+    if num_timeouts >= 3:
+        # TODO: This worker is dead - handle that
+        print('Worker dead!')
+        connection.current_job.return_resources()
+        # connection.prep_for_new_job()
+
+        # TODO: Need to close and remove this connection
+        # s = connection.file_descriptor
+        # s.close()
+
+        return
+
+    if ack_cls is JobInstructionsFileAckMessage:
+        connection.send_message(
+            JobInstructionsFileMessage(connection.current_job.instruction_path, connection.current_job.instruction_type,
+                                       connection.current_job.num_workers, connection.current_job.partition_num)
+        )
+    elif ack_cls is DataFileAckMessage:
+        connection.send_message(DataFileMessage(connection.current_job.data_path))
+    elif ack_cls is JobStartAckMessage:
+        connection.send_message(JobStartMessage())
+    elif ack_cls is SubmittedJobFinishedAckMessage:
+        current_job_connection.send_message(SubmittedJobFinishedMessage())
+
+
 def handle_message(message, connection, num_partitions=1,
                    initialize_job=None, current_job_connection=None,
                    ready_for_new_job=None,
-                   job_finished=None, clean_up=None,
+                   job_finished=None,
                    mark_job_as_finished=None):
     """
     Process the messages received from workers and perform
@@ -63,6 +95,21 @@ def handle_message(message, connection, num_partitions=1,
     :return: Message list to write to worker
     """
     connection.prev_message = message.m_type
+
+    TIMEOUT_SECONDS = 1
+    msg_index = None
+    for index, pair in enumerate(connection.expected_messages):
+        if message.is_type(pair[0]().m_type):
+            msg_index = index
+            break
+    if msg_index is not None:
+        connection.expected_messages.pop(msg_index)
+
+    for pair in connection.expected_messages:
+        message_cls, expect_start, num_timeouts = pair
+        now = datetime.now()
+        if expect_start < now - timedelta(seconds=TIMEOUT_SECONDS):
+            handle_ack_timeout(pair, connection, current_job_connection)
     print(message)
 
     if message.is_type(MessageTypes.SUBMIT_JOB):
@@ -108,6 +155,8 @@ def handle_message(message, connection, num_partitions=1,
         job = connection.current_job
         job.pending_assignment = False
         connection.data_file = job.data_path
+        connection.expected_messages.append([JobInstructionsFileAckMessage, datetime.now(), 0])
+        connection.expected_messages.append([DataFileAckMessage, datetime.now(), 0])
         return [
             JobInstructionsFileMessage(job.instruction_path, job.instruction_type,
                                        job.num_workers, job.partition_num),
@@ -119,13 +168,15 @@ def handle_message(message, connection, num_partitions=1,
         connection.instructions_ackd = True
 
         if should_send_job_start(connection):
+            connection.expected_messages.append([JobStartAckMessage, datetime.now(), 0])
             return [JobStartMessage()]
         return []
 
     elif message.is_type(MessageTypes.DATAFILE_ACK):
-        connection.datafile_ackd = True
+        connection.data_file_ackd = True
 
         if should_send_job_start(connection):
+            connection.expected_messages.append([JobStartAckMessage, datetime.now(), 0])
             return [JobStartMessage()]
         return []
 
@@ -142,10 +193,10 @@ def handle_message(message, connection, num_partitions=1,
         if job_finished():  # Overall job
             print('Job finished. Returning results to submitter.')
             # result_file = get_job_result_file_path(num_partitions)
+            current_job_connection.expected_messages.append([SubmittedJobFinishedAckMessage, datetime.now(), 0])
             current_job_connection.send_message(
                 SubmittedJobFinishedMessage()
             )
-            clean_up()
 
         # Reset this connection so that it can be assigned a new job
         connection.prep_for_new_job()
@@ -153,6 +204,7 @@ def handle_message(message, connection, num_partitions=1,
         return [JobDoneAckMessage()]
 
     elif message.is_type(MessageTypes.SUBMITTED_JOB_FINISHED_ACK):
+        print('Marking job as finished')
         mark_job_as_finished()
 
     elif message.is_type(MessageTypes.JOB_HEARTBEAT):

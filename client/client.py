@@ -3,6 +3,7 @@ import socket
 import select
 from optparse import OptionParser
 import time
+import random
 
 from PMRProcessing.mapper.mapper import Mapper
 from PMRProcessing.reducer.reducer import Reducer
@@ -62,10 +63,8 @@ class Client(object):
                 self.instructions_type = JobInstructionsFileMessage.get_type_from_message(message)
                 self.num_workers = JobInstructionsFileMessage.get_num_workers_from_message(message)
                 self.partition_num = JobInstructionsFileMessage.get_partition_num_from_message(message)
-                self.message_write_queue.append(JobInstructionsFileAckMessage())
             elif message.m_type is MessageTypes.DATAFILE:
                 self.data_path = message.get_body()
-                self.message_write_queue.append(DataFileAckMessage())
             elif message.m_type is MessageTypes.JOB_START:
                 # Start job
                 fs = SimpleFileSystem()
@@ -108,6 +107,18 @@ class Client(object):
                 if in_file:
                     fs.close(in_file)
 
+    def send_ack_for(self, message):
+        if message.m_type is MessageTypes.JOB_INSTRUCTIONS_FILE:
+            self.message_write_queue.append(JobInstructionsFileAckMessage())
+        elif message.m_type is MessageTypes.DATAFILE:
+            # if random.choice([0,1]) == 1:
+            self.message_write_queue.append(DataFileAckMessage())
+            # else:
+            #     return False
+        elif message.m_type is MessageTypes.JOB_START:
+            self.message_write_queue.append(JobStartAckMessage())
+        return True
+
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.server_address)
@@ -118,21 +129,29 @@ class Client(object):
 
         while True:
             self.do_processing()
+
             if self.message_write_queue:
                 readable, writeable, _ = select.select([sock], [sock], [])
             else:
-                readable, writeable, _ = select.select([sock], [], [])
+                readable, _, _ = select.select([sock], [], [])
 
             if readable:
                 message = self.connection.receive()
                 if message:
                     # print(message)
-                    self.message_read_queue.append(message)
+                    # TODO: Remove this random dropping once done testing
+                    if self.send_ack_for(message):
+                        self.message_read_queue.append(message)
+
+            # Wait for write again, to send acks asap
+            if not writeable and self.message_write_queue:
+                _, writeable, _ = select.select([], [sock], [])
 
             if writeable:
                 # Write things if we need to
                 while self.message_write_queue:
                     message = self.message_write_queue.pop(0)
+                    print('sending type {}'.format(message.m_type))
                     self.connection.send_message(message)
                 self.connection.write()
 
