@@ -33,6 +33,7 @@ def chunk_input_data(data_path, lines_per_partition=500):
     print (partition_paths)
     return partition_paths
 
+
 def chunk_input_data_by_size_and_workers(data_path, n_workers):
     """
     Create n_workers partitions of roughly equal number of bytes

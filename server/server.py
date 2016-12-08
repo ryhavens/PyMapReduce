@@ -1,17 +1,22 @@
-import time
+import importlib
 import curses
 import socket
 import select
+import random
+import string
 from optparse import OptionParser
+from datetime import datetime, timedelta
 
 from PMRJob.job import setup_mapping_tasks, setup_reducing_tasks
 from connection import ClientDisconnectedException
 from filesystems import SimpleFileSystem
-from messages import JobReadyMessage
+from messages import *
 from .server_connections import WorkerConnection, ConnectionsList
-from .message_handlers import handle_message
 
 from PMRProcessing.heartbeat.heartbeat import *
+
+# Timeout before resending messages
+PROTOCOL_TIMEOUT_SECONDS = 3
 
 
 class Server(object):
@@ -237,8 +242,8 @@ class Server(object):
             read_list += self.connections_list.get_read_set()
             write_list = self.connections_list.get_write_set()
 
-            if (self.job_started):
-                print (self.connections_list)
+            if self.job_started:
+                print(self.connections_list)
             readable, writeable, _ = select.select(read_list, write_list, [], 1.0)
             for s in readable:
                 if s == self.sock:
@@ -254,12 +259,7 @@ class Server(object):
                     try:
                         message = conn.receive()
                         if message:
-                            to_write = handle_message(message, conn,
-                                                      num_workers=self.get_num_subscribed_workers,
-                                                      initialize_job=self.initialize_job,
-                                                      current_job_connection=self.job_submitter_connection,
-                                                      job_finished=self.job_finished,
-                                                      mark_job_as_finished=self.mark_job_as_finished)
+                            to_write = self.handle_message(message, conn)
 
                             while to_write:
                                 w_message = to_write.pop()
@@ -291,6 +291,7 @@ class Server(object):
     #   and/or handle subtle errors from clients.
     def operational_check(self):
         self.check_timed_out_heartbeats()
+        self.check_for_dropped_messages()
 
     # compares last acked heartbeat to current time, disconnects client if difference is
     # greater than self.heartbeat_allowance
@@ -299,6 +300,19 @@ class Server(object):
         timed_out_conns = filter(lambda c: c.running and (current_time - c.last_heartbeat_ack) > self.timeout_allowance, self.connections_list.connections)
         for conn in timed_out_conns:
             self.handle_conn_error(conn, "Heartbeat timeout")
+
+    def check_for_dropped_messages(self):
+        """
+        Check for any workers that haven't ack'd commands
+        or other relevant messages
+        :return:
+        """
+        for connection in self.connections_list.connections:
+            for pair in connection.expected_messages:
+                message_cls, expect_start, num_timeouts = pair
+                now = datetime.now()
+                if expect_start < now - timedelta(seconds=PROTOCOL_TIMEOUT_SECONDS):
+                    self.handle_ack_timeout(pair, connection, self.job_submitter_connection)
 
     # serialized job ID
     def get_next_job_id(self):
@@ -355,5 +369,194 @@ class Server(object):
             c.byte_processing_rate = -1
             c.progress = 0
 
+    def should_send_job_start(self, conn):
+        return conn.data_file_ackd and conn.instructions_ackd
 
+    def is_valid_package_path(self, package_path, cls):
+        """
+        Check if the provided package path is valid
+        Example path: PMRProcessing.mapper.word_count_mapper
+        :param package_path: The package path to verify
+        :param cls: The class to check for in the package
+        :return: boolean
+        """
+        try:
+            pkg = importlib.import_module(package_path)
+        except ImportError:
+            return False
+        try:
+            _ = getattr(pkg, cls)
+            return True
+        except AttributeError:
+            return False
 
+    def is_valid_file_path(self, path):
+        """
+        Check if the provided file path is valid
+        :param path: the file path
+        :return: boolean
+        """
+        sf = SimpleFileSystem()
+        try:
+            sf.close(sf.open(path, 'r'))
+            return True
+        except FileNotFoundError:
+            return False
+
+    def handle_ack_timeout(self, expected_ack_triplet, connection, current_job_connection):
+        print('HANDING ACK TIMEOUT')
+        expected_ack_triplet[2] += 1
+        ack_cls, expected_time_start, num_timeouts = expected_ack_triplet
+
+        if num_timeouts >= 3:
+            # This worker is "dead". Recoup its job and disconnect.
+            print('Worker dead!')
+            connection.return_resources()
+            connection.file_descriptor.close()
+            self.connections_list.remove(connection.file_descriptor)
+            return
+
+        if ack_cls is JobInstructionsFileAckMessage:
+            connection.send_message(
+                JobInstructionsFileMessage(connection.current_job.instruction_path,
+                                           connection.current_job.instruction_type,
+                                           connection.current_job.num_workers, connection.current_job.partition_num)
+            )
+        elif ack_cls is DataFileAckMessage:
+            connection.send_message(DataFileMessage(connection.current_job.data_path))
+        elif ack_cls is JobStartAckMessage:
+            connection.send_message(JobStartMessage())
+        elif ack_cls is SubmittedJobFinishedAckMessage:
+            current_job_connection.send_message(SubmittedJobFinishedMessage())
+
+    def handle_message(self, message, connection):
+        """
+        Process the messages received from workers and perform
+        any necessary operations accordingly
+        :param message: The message to handle
+        :param connection: The WorkerConnection of this client
+        :param sub_jobs: the sub_jobs list from the server
+        :param initialize_job: The server function to set a new job up on command
+        :param current_job_connection: the conn that corresponds to overall job submitter
+        :param job_finished: the server function to test whether the overall job is finished
+        :param mark_job_as_finished: the server function to prep for new job
+        :return: Message list to write to worker
+        """
+        connection.prev_message = message.m_type
+        # figured this might as well go here
+        connection.last_heartbeat_ack = time.time()
+
+        msg_index = None
+        for index, pair in enumerate(connection.expected_messages):
+            if message.is_type(pair[0]().m_type):
+                msg_index = index
+                break
+        if msg_index is not None:
+            connection.expected_messages.pop(msg_index)
+
+        if message.is_type(MessageTypes.SUBMIT_JOB):
+            if self.job_submitter_connection is not None:
+                return [SubmitJobDeniedMessage(body='Server is busy with another job')]
+
+            if self.get_num_subscribed_workers() == 0:
+                return [SubmitJobDeniedMessage(body='No workers available')]
+
+            mapper_name = SubmitJobMessage.get_mapper_name(message)
+            reducer_name = SubmitJobMessage.get_reducer_name(message)
+            data_file_path = SubmitJobMessage.get_data_file_path(message)
+
+            invalid_fields = []
+            if not self.is_valid_package_path(mapper_name, 'Mapper'):
+                invalid_fields.append(mapper_name)
+            if not self.is_valid_package_path(reducer_name, 'Reducer'):
+                invalid_fields.append(reducer_name)
+            if not self.is_valid_file_path(data_file_path):
+                invalid_fields.append(data_file_path)
+
+            if invalid_fields:
+                # Not valid
+                return [SubmitJobDeniedMessage(
+                    body='{fields} {verb} invalid path{s}.'.format(
+                        fields=', '.join(invalid_fields),
+                        verb='is' if len(invalid_fields) == 1 else 'are',
+                        s='' if len(invalid_fields) == 1 else ''
+                    )
+                )]
+            else:
+                self.initialize_job(connection, mapper_name, reducer_name, data_file_path)
+                return [SubmitJobAckMessage()]
+
+        elif message.is_type(MessageTypes.SUBSCRIBE_MESSAGE):
+            connection.subscribe()
+            connection.worker_id = 'w-' + ''.join(random.choice(string.ascii_lowercase) for _ in range(5))
+            return [SubscribeAckMessage()]
+
+        elif message.is_type(MessageTypes.JOB_READY_TO_RECEIVE):
+            # Mark that this client has ack'd that a job it is
+            # ready to receive the job
+
+            job = connection.current_job
+            job.pending_assignment = False
+            connection.data_file = job.data_path
+            connection.expected_messages.append([JobInstructionsFileAckMessage, datetime.now(), 0])
+            connection.expected_messages.append([DataFileAckMessage, datetime.now(), 0])
+            return [
+                JobInstructionsFileMessage(job.instruction_path, job.instruction_type,
+                                           job.num_workers, job.partition_num),
+                DataFileMessage(job.data_path)
+            ]
+
+        elif message.is_type(MessageTypes.JOB_INSTRUCTIONS_FILE_ACK):
+            # Next the client needs to be sent the datafile
+            connection.instructions_ackd = True
+
+            if self.should_send_job_start(connection):
+                connection.expected_messages.append([JobStartAckMessage, datetime.now(), 0])
+                return [JobStartMessage()]
+            return []
+
+        elif message.is_type(MessageTypes.DATAFILE_ACK):
+            connection.data_file_ackd = True
+
+            if self.should_send_job_start(connection):
+                connection.expected_messages.append([JobStartAckMessage, datetime.now(), 0])
+                return [JobStartMessage()]
+            return []
+
+        elif message.is_type(MessageTypes.JOB_START_ACK):
+            connection.running = True
+            return []
+
+        elif message.is_type(MessageTypes.JOB_DONE):
+            connection.result_file = message.get_body()
+
+            # End job
+            connection.running = False
+            job = connection.current_job
+            job.post_execute(connection.result_file)
+
+            if self.job_finished():  # Overall job
+                print('Job finished. Returning results to submitter.')
+                self.job_submitter_connection.expected_messages.append([SubmittedJobFinishedAckMessage, datetime.now(), 0])
+                self.job_submitter_connection.send_message(
+                    SubmittedJobFinishedMessage()
+                )
+
+            # Reset this connection so that it can be assigned a new job
+            connection.prep_for_new_job()
+
+            return [JobDoneAckMessage()]
+
+        elif message.is_type(MessageTypes.SUBMITTED_JOB_FINISHED_ACK):
+            print('Marking job as finished')
+            self.mark_job_as_finished()
+
+        elif message.is_type(MessageTypes.JOB_HEARTBEAT):
+            # TODO use heartbeat rate to keep track of most efficient clients
+            progress = JobHeartbeatMessage.get_progress(message)
+            rate = JobHeartbeatMessage.get_rate(message)
+
+            connection.progress = int(progress)
+            connection.byte_processing_rate = float(rate)
+
+            return []

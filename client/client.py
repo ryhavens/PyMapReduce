@@ -49,6 +49,14 @@ class Client(object):
         self.num_workers = None
         self.partition_num = None
 
+    def ready_to_start(self):
+        if self.instructions_type == 'Mapper':
+            return self.instructions_file and self.data_path
+        elif self.instructions_type == 'Reducer':
+            return bool(self.instructions_file)
+        else:
+            return False
+
     def do_processing(self):
         if len(self.message_read_queue):
             message = self.message_read_queue.pop(0)
@@ -66,6 +74,12 @@ class Client(object):
             elif message.m_type is MessageTypes.DATAFILE:
                 self.data_path = message.get_body()
             elif message.m_type is MessageTypes.JOB_START:
+                if not self.ready_to_start():
+                    print(self.instructions_type)
+                    print(self.data_path)
+                    print('Not starting job - don\'t have required data')
+                    return
+
                 # Start job
                 fs = SimpleFileSystem()
 
@@ -102,9 +116,6 @@ class Client(object):
                     self.prep_for_new_job()
                     ])
 
-                self.connection.send_message(JobStartAckMessage())
-                self.connection.write()
-
                 task.run()
 
                 if in_file:
@@ -114,13 +125,10 @@ class Client(object):
         if message.m_type is MessageTypes.JOB_INSTRUCTIONS_FILE:
             self.message_write_queue.append(JobInstructionsFileAckMessage())
         elif message.m_type is MessageTypes.DATAFILE:
-            # if random.choice([0,1]) == 1:
             self.message_write_queue.append(DataFileAckMessage())
-            # else:
-            #     return False
         elif message.m_type is MessageTypes.JOB_START:
-            self.message_write_queue.append(JobStartAckMessage())
-        return True
+            if self.ready_to_start():
+                self.message_write_queue.append(JobStartAckMessage())
 
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -141,13 +149,11 @@ class Client(object):
             if readable:
                 message = self.connection.receive()
                 if message:
-                    # print(message)
-                    # TODO: Remove this random dropping once done testing
-                    if self.send_ack_for(message):
-                        self.message_read_queue.append(message)
+                    self.send_ack_for(message)
+                    self.message_read_queue.append(message)
 
             # Wait for write again, to send acks asap
-            if not writeable and self.message_write_queue:
+            if self.message_write_queue:
                 _, writeable, _ = select.select([], [sock], [])
 
             if writeable:

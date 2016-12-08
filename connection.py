@@ -68,6 +68,7 @@ class PMRConnection(object):
         return bool(self.write_buffer)
 
     def send_message(self, message):
+        print(message)
         self._write_to_buffer(message.get_header_for_send())
         if message.has_body():
             self._write_to_buffer(message.get_body_for_send())
