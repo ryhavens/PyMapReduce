@@ -67,7 +67,6 @@ class Server(object):
         # whether to boot an underperforming worker
         self.time_buffer = 5
 
-
     def stop_gui(self):
         """
         Cleans up the curses settings to return terminal
@@ -75,6 +74,9 @@ class Server(object):
         :return:
         """
         if self.show_info_pane:
+            curses.nocbreak()
+            self.stdscr.keypad(False)
+            curses.echo()
             curses.endwin()
 
     def parse_opts(self):
@@ -234,7 +236,7 @@ class Server(object):
             total_tasks = len(self.sub_jobs) + len(self.pending_jobs)
             tasks_complete = len([j for j in self.sub_jobs + self.pending_jobs if j.client])
             percent = round(tasks_complete / total_tasks * 100)
-            self.stdscr.addstr(line_number, 0, 'Running job... {percent}% complete'.format(percent=percent))
+            self.stdscr.addstr(line_number, 0, 'Running job...')
         else:
             self.stdscr.addstr(line_number, 0, 'Waiting for job...')
 
@@ -262,8 +264,6 @@ class Server(object):
             read_list += self.connections_list.get_read_set()
             write_list = self.connections_list.get_write_set()
 
-            if self.job_started:
-                print(self.connections_list)
             readable, writeable, _ = select.select(read_list, write_list, [], 1.0)
             for s in readable:
                 if s == self.sock:
@@ -301,7 +301,6 @@ class Server(object):
             self.operational_check()
 
     def handle_conn_error(self, conn, error=None):
-        print(error)
         conn.return_resources()
         self.connections_list.remove(conn.file_descriptor)
 
@@ -401,9 +400,10 @@ class Server(object):
 
     # called at the end of the job to determine overall efficiency
     def log_efficiency(self):
-        print('Start time: %s' % (time.strftime('%H:%M:%S', time.localtime(self.monitor_stats['start_time']))))
-        print('End time: %s' % (time.strftime('%H:%M:%S', time.localtime())))
-        print('Average worker utilization: %s' % (str(100*self.monitor_stats['avg_efficiency'])))
+        # print('Start time: %s' % (time.strftime('%H:%M:%S', time.localtime(self.monitor_stats['start_time']))))
+        # print('End time: %s' % (time.strftime('%H:%M:%S', time.localtime())))
+        # print('Average worker utilization: %s' % (str(100*self.monitor_stats['avg_efficiency'])))
+        pass
 
     # begin monitoring efficiency at the start of a job
     # uses a BeatingProcess to allow the efficiency to be updated concurrently
@@ -470,13 +470,11 @@ class Server(object):
             return False
 
     def handle_ack_timeout(self, expected_ack_triplet, connection, current_job_connection):
-        print('HANDING ACK TIMEOUT')
         expected_ack_triplet[2] += 1
         ack_cls, expected_time_start, num_timeouts = expected_ack_triplet
 
         if num_timeouts >= 3:
             # This worker is "dead". Recoup its job and disconnect.
-            print('Worker dead!')
             connection.return_resources()
             connection.file_descriptor.close()
             self.connections_list.remove(connection.file_descriptor)
@@ -602,7 +600,6 @@ class Server(object):
             job.post_execute(connection.result_file)
 
             if self.job_finished():  # Overall job
-                print('Job finished. Returning results to submitter.')
                 self.job_submitter_connection.expected_messages.append([SubmittedJobFinishedAckMessage, datetime.now(), 0])
                 self.job_submitter_connection.send_message(
                     SubmittedJobFinishedMessage()
@@ -614,7 +611,6 @@ class Server(object):
             return [JobDoneAckMessage()]
 
         elif message.is_type(MessageTypes.SUBMITTED_JOB_FINISHED_ACK):
-            print('Marking job as finished')
             self.mark_job_as_finished()
 
         elif message.is_type(MessageTypes.JOB_HEARTBEAT):
