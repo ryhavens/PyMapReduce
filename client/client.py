@@ -74,7 +74,6 @@ class Client(object):
                 self.data_path = message.get_body()
             elif message.m_type is MessageTypes.JOB_START:
                 if not self.ready_to_start():
-                    print('Not starting job - don\'t have required data')
                     return
 
                 # Start job
