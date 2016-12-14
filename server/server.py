@@ -67,6 +67,10 @@ class Server(object):
         # whether to boot an underperforming worker
         self.time_buffer = 5
 
+        # A record of booted worker ids and reasons
+        # [(worker_name, reason)]
+        self.booted_record = []
+
     def stop_gui(self):
         """
         Cleans up the curses settings to return terminal
@@ -253,6 +257,15 @@ class Server(object):
         else:
             self.stdscr.addstr(line_number, 0, 'Waiting for job...')
 
+        line_number += 3
+        if self.booted_record:
+            self.stdscr.addstr(line_number, 0, 'Most Recently Booted Clients:')
+            line_number += 1
+            for record in self.booted_record[:3]:
+                if record[0]:
+                    line_number += 1
+                    self.stdscr.addstr(line_number, 0, 'Client: {}      Reason: {}'.format(record[0], record[1]))
+
         self.stdscr.refresh()
 
     def run(self):
@@ -316,6 +329,7 @@ class Server(object):
     def handle_conn_error(self, conn, error=None):
         conn.return_resources()
         self.connections_list.remove(conn.file_descriptor)
+        self.booted_record.append((conn.worker_id, error))
 
     # operational_check
     # Performs any operations the server deems necessary to improve performance
@@ -491,6 +505,7 @@ class Server(object):
             connection.return_resources()
             connection.file_descriptor.close()
             self.connections_list.remove(connection.file_descriptor)
+            self.booted_record.append((connection.worker_id, 'Client Unresponsive'))
             return
 
         if ack_cls is JobInstructionsFileAckMessage:
