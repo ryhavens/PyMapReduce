@@ -261,7 +261,7 @@ class Server(object):
         if self.booted_record:
             self.stdscr.addstr(line_number, 0, 'Most Recently Booted Clients:')
             line_number += 1
-            for record in self.booted_record[:3]:
+            for record in self.booted_record[3:]:
                 if record[0]:
                     line_number += 1
                     self.stdscr.addstr(line_number, 0, 'Client: {}      Reason: {}'.format(record[0], record[1]))
