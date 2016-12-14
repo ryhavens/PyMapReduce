@@ -210,6 +210,14 @@ class Server(object):
         self.end_monitor_job_efficiency()
         self.reset_performance_stats()
 
+    def get_progress_bar(self, iteration, total, prefix = '', suffix = '', decimals = 1, barLength = 100):
+        # Adapted from: http://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console
+        formatStr = "{0:." + str(decimals) + "f}"
+        percent = formatStr.format(100 * (iteration / float(total)))
+        filledLength = int(round(barLength * iteration / float(total)))
+        bar = '█' * filledLength + '-' * (barLength - filledLength)
+        return '%s |%s| %s%s %s' % (prefix, bar, percent, '%', suffix)
+
     def update_interface(self):
         """
         Update the info pane
@@ -229,7 +237,12 @@ class Server(object):
         for i, conn in enumerate(self.connections_list.connections):
             if conn.subscribed:
                 line_number += 1
-                self.stdscr.addstr(line_number, 0, conn.worker_id + ' ' + ('working' if conn.current_job else 'idle'))
+                line = conn.worker_id + (' Idle' if not conn.current_job else ' ')
+                if hasattr(conn, 'chunk_size'):
+                    if 0 < conn.progress <= conn.chunk_size:
+                        line += self.get_progress_bar(conn.progress, conn.chunk_size,
+                                                      prefix='Working:', suffix='Complete', barLength=30)
+                self.stdscr.addstr(line_number, 0, line)
 
         line_number += 2
         if self.job_started:

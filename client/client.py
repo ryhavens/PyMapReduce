@@ -3,7 +3,6 @@ import socket
 import select
 from optparse import OptionParser
 import time
-import random
 
 from PMRProcessing.mapper.mapper import Mapper
 from PMRProcessing.reducer.reducer import Reducer
